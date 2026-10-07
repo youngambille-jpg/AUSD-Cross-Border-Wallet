@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/"
+title = "AUSD Wallet"
+description = "A native mobile wallet prototype for sending AUSD to people locally or across borders, with Mera passkey onboarding and mock instant settlement on Monad testnet."
+version = "1.0.0"
+id = "artifacts/ausd-wallet"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/" ]
+localPort = 23833
+
+[services.development]
+run = "pnpm --filter @workspace/ausd-wallet run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ausd-wallet", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/ausd-wallet", "run", "serve" ]
+
+[services.env]
+PORT = "23833"
+BASE_PATH = "/"
