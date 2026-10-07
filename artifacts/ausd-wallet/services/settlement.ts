@@ -1,38 +1,243 @@
+import {
+  createPublicClient,
+  defineChain,
+  formatUnits,
+  http,
+  isAddress,
+  parseUnits,
+  type Address,
+} from 'viem';
+
 export const MONAD_TESTNET = {
   chainId: 10143,
   name: 'Monad Testnet',
   rpcUrl: 'https://testnet-rpc.monad.xyz',
-  contractAddress: '0x8468587Af422ad440F58a57E955eCA6A970b5375',
+  factoryAddress: '0x8468587Af422ad440F58a57E955eCA6A970b5375' as Address,
   explorerUrl:
     'https://testnet.monadvision.com/address/0x8468587Af422ad440F58a57E955eCA6A970b5375?tab=Contract',
+  ausdAddress: '0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC' as Address,
+  ctkAddress: '0x7BEb5D9DB0d85cBEa543C04f0dE8c23c2176cd9D' as Address,
 };
 
-export interface ContractCheck {
-  contractPresent: boolean;
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+export const AGORA_TESTNET_WHITELISTER = '0x7c10F56d6f04a51376393a1C3670e966863F6BD5' as Address;
+
+const chain = defineChain({
+  id: MONAD_TESTNET.chainId,
+  name: MONAD_TESTNET.name,
+  nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
+  rpcUrls: { default: { http: [MONAD_TESTNET.rpcUrl] } },
+});
+
+const client = createPublicClient({ chain, transport: http(MONAD_TESTNET.rpcUrl) });
+
+const factoryAbi = [
+  {
+    type: 'function',
+    name: 'getPairFromTokens',
+    stateMutability: 'view',
+    inputs: [
+      { name: '_token0', type: 'address' },
+      { name: '_token1', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'address' }],
+  },
+] as const;
+
+export const pairAbi = [
+  {
+    type: 'function',
+    name: 'APPROVED_SWAPPER',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    type: 'function',
+    name: 'hasRole',
+    stateMutability: 'view',
+    inputs: [{ name: '_role', type: 'string' }, { name: '_account', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'isPaused',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'token0',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'token1',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'token0Decimals',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'token1Decimals',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'getAmountsOut',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'amountIn', type: 'uint256' },
+      { name: 'path', type: 'address[]' },
+    ],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }],
+  },
+  {
+    type: 'function',
+    name: 'swapExactTokensForTokens',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amountIn', type: 'uint256' },
+      { name: 'amountOutMin', type: 'uint256' },
+      { name: 'path', type: 'address[]' },
+      { name: 'to', type: 'address' },
+      { name: 'deadline', type: 'uint256' },
+    ],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }],
+  },
+  {
+    type: 'event',
+    name: 'Swap',
+    anonymous: false,
+    inputs: [
+      { name: 'sender', type: 'address', indexed: true },
+      { name: 'amount0In', type: 'uint256', indexed: false },
+      { name: 'amount1In', type: 'uint256', indexed: false },
+      { name: 'amount0Out', type: 'uint256', indexed: false },
+      { name: 'amount1Out', type: 'uint256', indexed: false },
+      { name: 'to', type: 'address', indexed: true },
+    ],
+  },
+] as const;
+
+export const whitelisterAbi = [
+  {
+    type: 'function',
+    name: 'setApprovedSwapper',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'swapper', type: 'address' }],
+    outputs: [],
+  },
+] as const;
+
+export interface SettlementQuote {
   checkedAt: string;
+  factoryAddress: Address;
+  pairAddress: Address;
+  amountIn: string;
+  amountOut: string;
+  amountOutRaw: string;
+  outputDecimals: number;
+  outputSymbol: 'CTK';
 }
 
-export async function checkSettlementContract(): Promise<ContractCheck> {
-  const response = await fetch(MONAD_TESTNET.rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'eth_getCode',
-      params: [MONAD_TESTNET.contractAddress, 'latest'],
-      id: 1,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Monad testnet RPC returned ${response.status}.`);
+/**
+ * Executes only eth_call reads: resolve the documented pair and ask it for a
+ * live AUSD→CTK quote. This does not call a state-changing swap function.
+ */
+export async function simulateSettlementSwap(
+  amount: string,
+  senderAddress: string,
+): Promise<SettlementQuote> {
+  if (!isAddress(senderAddress, { strict: false })) throw new Error('A valid sender wallet address is required for the testnet call.');
+  let amountIn: bigint;
+  try {
+    amountIn = parseUnits(amount, 6);
+  } catch {
+    throw new Error('Enter a valid AUSD amount with at most six decimal places.');
   }
-  const payload: unknown = await response.json();
-  if (!payload || typeof payload !== 'object' || !('result' in payload)) {
-    throw new Error('Monad testnet returned an invalid contract-check response.');
+  if (amountIn <= 0n) throw new Error('Enter an AUSD amount greater than zero.');
+
+  try {
+    const factoryCode = await client.getBytecode({ address: MONAD_TESTNET.factoryAddress });
+    if (!factoryCode || factoryCode === '0x') {
+      throw new Error('The Agora factory has no contract code on Monad testnet.');
+    }
+    const pairAddress = await client.readContract({
+      address: MONAD_TESTNET.factoryAddress,
+      abi: factoryAbi,
+      functionName: 'getPairFromTokens',
+      args: [MONAD_TESTNET.ausdAddress, MONAD_TESTNET.ctkAddress],
+      account: senderAddress as Address,
+    });
+    if (pairAddress.toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
+      throw new Error('The factory did not find an AUSD/CTK pair on Monad testnet.');
+    }
+
+    const pairCode = await client.getBytecode({ address: pairAddress });
+    if (!pairCode || pairCode === '0x') {
+      throw new Error('The factory returned a pair address with no deployed contract code.');
+    }
+
+    const [token0, token1, decimals0, decimals1, paused] = await Promise.all([
+      client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token0' }),
+      client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token1' }),
+      client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token0Decimals' }),
+      client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token1Decimals' }),
+      client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'isPaused' }),
+    ]);
+    if (paused) throw new Error('Agora Instant Settlement is paused on Monad testnet. Try again later.');
+    const tokenByLower = [token0.toLowerCase(), token1.toLowerCase()];
+    if (!tokenByLower.includes(MONAD_TESTNET.ausdAddress.toLowerCase()) ||
+        !tokenByLower.includes(MONAD_TESTNET.ctkAddress.toLowerCase())) {
+      throw new Error('The returned pair does not contain the expected AUSD and CTK tokens.');
+    }
+    const inputDecimals = token0.toLowerCase() === MONAD_TESTNET.ausdAddress.toLowerCase()
+      ? Number(decimals0)
+      : Number(decimals1);
+    const outputDecimals = token0.toLowerCase() === MONAD_TESTNET.ctkAddress.toLowerCase()
+      ? Number(decimals0)
+      : Number(decimals1);
+    if (inputDecimals !== 6) {
+      throw new Error(`The factory pair reports ${inputDecimals} AUSD decimals; expected 6.`);
+    }
+    const path = [MONAD_TESTNET.ausdAddress, MONAD_TESTNET.ctkAddress] as const;
+    const amounts = await client.readContract({
+      address: pairAddress,
+      abi: pairAbi,
+      functionName: 'getAmountsOut',
+      args: [parseUnits(amount, inputDecimals), [...path]],
+      account: senderAddress as Address,
+    });
+    const amountOut = amounts[amounts.length - 1];
+    if (amountOut === undefined || amountOut <= 0n) {
+      throw new Error('The Agora pair returned no quote for this amount.');
+    }
+
+    return {
+      checkedAt: new Date().toISOString(),
+      factoryAddress: MONAD_TESTNET.factoryAddress,
+      pairAddress,
+      amountIn: formatUnits(amountIn, 6),
+      amountOut: formatUnits(amountOut, outputDecimals),
+      amountOutRaw: amountOut.toString(),
+      outputDecimals,
+      outputSymbol: 'CTK',
+    };
+  } catch (error) {
+    if (error instanceof Error && /factory|pair|quote|AUSD|Monad testnet/.test(error.message)) throw error;
+    throw new Error(error instanceof Error ? `Monad testnet quote failed: ${error.message}` : 'Monad testnet quote failed. Check your connection and try again.');
   }
-  const code = (payload as { result?: unknown }).result;
-  if (typeof code !== 'string') {
-    throw new Error('Monad testnet did not return contract bytecode.');
-  }
-  return { contractPresent: code !== '0x', checkedAt: new Date().toISOString() };
 }

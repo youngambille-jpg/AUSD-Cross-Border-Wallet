@@ -83,6 +83,50 @@ function serveManifest(platform, res) {
   res.end(manifest);
 }
 
+function servePasskeyAssociation(pathname, res) {
+  let document;
+  if (pathname === '/.well-known/apple-app-site-association') {
+    const teamId = process.env.AUSD_IOS_TEAM_ID;
+    const bundleId = process.env.AUSD_IOS_BUNDLE_ID || 'com.ausd.wallet';
+    if (!teamId) {
+      res.writeHead(503, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Set AUSD_IOS_TEAM_ID to publish the iOS passkey association.' }));
+      return true;
+    }
+    document = {
+      applinks: {},
+      webcredentials: { apps: [`${teamId}.${bundleId}`] },
+      appclips: {},
+    };
+  } else if (pathname === '/.well-known/assetlinks.json') {
+    const packageName = process.env.AUSD_ANDROID_PACKAGE || 'com.ausd.wallet';
+    const fingerprints = (process.env.AUSD_ANDROID_SHA256_CERT_FINGERPRINTS || '')
+      .split(',')
+      .map((fingerprint) => fingerprint.trim())
+      .filter(Boolean);
+    if (fingerprints.length === 0) {
+      res.writeHead(503, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Set AUSD_ANDROID_SHA256_CERT_FINGERPRINTS to publish Android passkey associations.' }));
+      return true;
+    }
+    document = [
+      {
+        relation: ['delegate_permission/common.get_login_creds'],
+        target: { namespace: 'android_app', package_name: packageName, sha256_cert_fingerprints: fingerprints },
+      },
+    ];
+  } else {
+    return false;
+  }
+
+  res.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'public, max-age=300',
+  });
+  res.end(JSON.stringify(document));
+  return true;
+}
+
 function serveLandingPage(req, res, landingPageTemplate, appName) {
   const forwardedProto = req.headers['x-forwarded-proto'];
   const protocol = forwardedProto || 'https';
@@ -129,6 +173,8 @@ const appName = getAppName();
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
   let pathname = url.pathname;
+
+  if (servePasskeyAssociation(pathname, res)) return;
 
   if (basePath && pathname.startsWith(basePath)) {
     pathname = pathname.slice(basePath.length) || '/';

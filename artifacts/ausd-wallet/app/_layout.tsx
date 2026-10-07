@@ -12,9 +12,9 @@ import {
   Inter_700Bold,
   useFonts,
 } from '@expo-google-fonts/inter';
-import { Stack } from 'expo-router';
+import { router, Stack, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { WalletProvider } from '@/state/wallet-context';
+import { WalletProvider, useWallet } from '@/state/wallet-context';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -22,10 +22,29 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
+  const segments = useSegments();
+  const { ready, profile, authenticated } = useWallet();
+
+  useEffect(() => {
+    if (!ready) return;
+    const isProtectedRoute = ['(tabs)', 'send', 'review', 'success'].includes(segments[0] ?? '');
+    if (isProtectedRoute && (!profile || !authenticated)) router.replace('/');
+  }, [ready, profile, authenticated, segments]);
+
   return (
     <Stack screenOptions={{ headerBackTitle: 'Back' }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="create-account" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="send"
+        options={{
+          headerShown: false,
+          presentation: 'transparentModal',
+          animation: 'slide_from_bottom',
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      />
       <Stack.Screen name="review" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="success" options={{ headerShown: false, animation: 'fade_from_bottom' }} />
     </Stack>

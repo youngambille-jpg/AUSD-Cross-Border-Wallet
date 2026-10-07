@@ -77,15 +77,16 @@ export function BrandMark({ size = 38 }: { size?: number }) {
 export function BrandHeader({ compact = false }: { compact?: boolean }) {
   const colors = useColors();
   return (
-    <View style={styles.brandHeader}>
-      <View style={styles.brandRow}>
+    <View>
+      {/* <View style={styles.brandHeader}> */}
+      {/* <View style={styles.brandRow}>
         <BrandMark size={compact ? 34 : 40} />
         <Text style={[styles.brandName, { color: colors.foreground }]}>AUSD</Text>
       </View>
       <View style={[styles.testnetChip, { backgroundColor: colors.secondary }]}>
         <View style={[styles.statusDot, { backgroundColor: colors.primary }]} />
         <Text style={[styles.chipText, { color: colors.mutedForeground }]}>TESTNET</Text>
-      </View>
+      </View> */}
     </View>
   );
 }

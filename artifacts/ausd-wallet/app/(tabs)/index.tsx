@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
+import { getAUSDBalance } from '@/services/passkey';
 import {
   Body,
   BrandHeader,
@@ -20,14 +21,31 @@ const money = (amount: number) =>
 export default function WalletHome() {
   const colors = useColors();
   const { profile, balance, transfers } = useWallet();
+  const [chainBalance, setChainBalance] = useState<string | null>(null);
+  const [chainBalanceError, setChainBalanceError] = useState('');
+  const isMeraWallet = profile?.mode === 'mera';
+
+  useEffect(() => {
+    if (!isMeraWallet || !profile?.address) return;
+    let active = true;
+    getAUSDBalance(profile.address)
+      .then((value) => { if (active) setChainBalance(value); })
+      .catch(() => { if (active) setChainBalanceError('Balance unavailable'); });
+    return () => { active = false; };
+  }, [isMeraWallet, profile?.address]);
   const recent = transfers.slice(0, 3);
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).toUpperCase();
 
   return (
     <Page contentStyle={styles.page}>
       <BrandHeader compact />
       <View style={styles.greeting}>
         <View>
-          <Eyebrow>WEDNESDAY, OCTOBER 7</Eyebrow>
+          <Eyebrow>{today}</Eyebrow>
           <Text style={[styles.hello, { color: colors.foreground }]}>
             Good morning, {profile?.displayName.split(' ')[0] ?? 'there'}.
           </Text>
@@ -44,36 +62,36 @@ export default function WalletHome() {
         </Pressable>
       </View>
 
-      <Card style={[styles.balanceCard, { backgroundColor: colors.foreground, borderColor: colors.foreground }]}>
+      <Card style={{ ...styles.balanceCard, backgroundColor: colors.foreground, borderColor: colors.foreground }}>
         <View style={styles.balanceTop}>
-          <Text style={[styles.balanceLabel, { color: colors.border }]}>AVAILABLE BALANCE · DEMO</Text>
+          <Text style={[styles.balanceLabel, { color: colors.border }]}>{isMeraWallet ? 'ON-CHAIN BALANCE · TESTNET' : 'AVAILABLE BALANCE · DEMO'}</Text>
           <View style={styles.demoTag}>
             <View style={[styles.balanceDot, { backgroundColor: colors.primary }]} />
-            <Text style={[styles.demoTagText, { color: colors.background }]}>LOCAL</Text>
+            <Text style={[styles.demoTagText, { color: colors.background }]}>{isMeraWallet ? 'LIVE' : 'LOCAL'}</Text>
           </View>
         </View>
         <Text style={[styles.balanceAmount, { color: colors.background }]}>
-          <Text style={[styles.currency, { color: colors.border }]}>$ </Text>{money(balance)}
+          <Text style={[styles.currency, { color: colors.border }]}>$ </Text>{isMeraWallet ? chainBalance ?? '—' : money(balance)}
         </Text>
-        <Text style={[styles.balanceFoot, { color: colors.border }]}>AUSD · 1 AUSD = 1.00 USD</Text>
+        <Text style={[styles.balanceFoot, { color: colors.border }]}>{isMeraWallet ? chainBalanceError || 'AUSD contract balance on Monad testnet' : 'AUSD · 1 AUSD = 1.00 USD'}</Text>
       </Card>
 
       <View style={styles.quickActions}>
         <QuickAction
           icon="arrow-up-right"
           label="Send"
-          onPress={() => router.push('/(tabs)/send')}
+          onPress={() => router.push('/send')}
           primary
         />
         <QuickAction
-          icon="repeat"
-          label="Activity"
-          onPress={() => router.push('/(tabs)/activity')}
+          icon="plus"
+          label="Add"
+          onPress={() => router.push('/(tabs)/onramp')}
         />
         <QuickAction
-          icon="user"
-          label="Profile"
-          onPress={() => router.push('/(tabs)/profile')}
+          icon="corner-down-left"
+          label="Cash out"
+          onPress={() => router.push('/(tabs)/offramp')}
         />
       </View>
 
@@ -97,7 +115,7 @@ export default function WalletHome() {
                     {transfer.recipient}
                   </Text>
                   <Text style={[styles.activityMeta, { color: colors.mutedForeground }]}>
-                    {new Date(transfer.createdAt).toLocaleDateString()} · Simulated
+                    {new Date(transfer.createdAt).toLocaleDateString()} · {transfer.transactionHash ? 'Monad testnet' : 'Simulated'}
                   </Text>
                 </View>
                 <Text style={[styles.activityAmount, { color: colors.foreground }]}>
@@ -118,7 +136,7 @@ export default function WalletHome() {
       </Card>
 
       <InlineNotice icon="zap">
-        Every send is a testnet simulation. No AUSD or fiat is transferred.
+        {isMeraWallet ? 'Real AUSD transfers are submitted on Monad testnet with Pimlico gas sponsorship.' : 'Demo wallet activity is local only. Create a Mera passkey wallet to send testnet AUSD.'}
       </InlineNotice>
     </Page>
   );

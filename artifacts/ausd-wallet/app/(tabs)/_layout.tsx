@@ -21,6 +21,18 @@ function NativeTabLayout() {
         />
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="onramp">
+        <NativeTabs.Trigger.Icon sf={{ default: 'plus.circle', selected: 'plus.circle.fill' }} />
+        <NativeTabs.Trigger.Label>Add</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="offramp">
+        <NativeTabs.Trigger.Icon sf={{ default: 'arrow.down.left', selected: 'arrow.down.left.circle.fill' }} />
+        <NativeTabs.Trigger.Label>Cash out</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="profile">
+        <NativeTabs.Trigger.Icon sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }} />
+        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -37,7 +49,9 @@ function ClassicTabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        headerShown: true,
+        // The wallet screens provide their own branded headers. The stack
+        // navigator must not add a second title bar above the Android tabs.
+        headerShown: false,
         tabBarStyle: {
           position: 'absolute',
           backgroundColor: isIOS ? 'transparent' : colors.background,
@@ -75,6 +89,28 @@ function ClassicTabLayout() {
             ),
         }}
       />
+      <Tabs.Screen
+        name="onramp"
+        options={{
+          title: 'Add',
+          tabBarIcon: ({ color }) => <Feather name="plus-circle" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="offramp"
+        options={{
+          title: 'Cash out',
+          tabBarIcon: ({ color }) => <Feather name="corner-down-left" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen name="send" options={{ href: null }} />
     </Tabs>
   );
 }

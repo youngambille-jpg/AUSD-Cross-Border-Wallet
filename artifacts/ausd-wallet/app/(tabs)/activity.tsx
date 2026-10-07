@@ -1,4 +1,5 @@
 import React from 'react';
+import { Linking, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
@@ -16,7 +17,7 @@ export default function ActivityScreen() {
       <Eyebrow>Wallet</Eyebrow>
       <Title>Activity</Title>
       <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-        Your local transfer history. Every item is marked as a simulation.
+        Confirmed Monad testnet sends and local demo entries.
       </Text>
       {transfers.length ? (
         <Card style={styles.list}>
@@ -35,11 +36,21 @@ export default function ActivityScreen() {
                       day: 'numeric',
                       hour: 'numeric',
                       minute: '2-digit',
-                    })} · {transfer.currency} · SIMULATED
+                    })} · {transfer.settlementKind === 'agora-instant-settlement' ? 'AGORA SETTLEMENT' : transfer.currency} · {transfer.transactionHash ? 'CONFIRMED · GAS SPONSORED' : 'SIMULATED'}
                   </Text>
+                  {transfer.receivedCurrency && transfer.receivedCurrency !== transfer.currency ? (
+                    <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+                      Recipient received {amountText(transfer.receivedAmount)} {transfer.receivedCurrency}
+                    </Text>
+                  ) : null}
+                  {transfer.transactionHash ? (
+                    <Pressable onPress={() => void Linking.openURL(`https://testnet.monadvision.com/tx/${transfer.transactionHash}`)}>
+                      <Text style={[styles.meta, { color: colors.primary }]} numberOfLines={1}>View transaction on MonadVision</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
                 <Text style={[styles.amount, { color: colors.foreground }]}>
-                  −{amountText(transfer.amount)}
+                  −{amountText(transfer.amount)} {transfer.currency}
                 </Text>
               </View>
             </React.Fragment>
@@ -52,12 +63,12 @@ export default function ActivityScreen() {
           </View>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No activity yet</Text>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Your testnet simulations will be listed here after you review a send.
+            Your confirmed testnet sends will be listed here after you send AUSD.
           </Text>
         </Card>
       )}
       <InlineNotice icon="shield">
-        History is stored on this device. No wallet balance or settlement is updated on-chain.
+        Receipt details are stored on this device. Confirmed transactions are independently verifiable on MonadVision.
       </InlineNotice>
     </Page>
   );

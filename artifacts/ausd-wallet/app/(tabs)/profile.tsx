@@ -18,7 +18,7 @@ import {
 
 export default function ProfileScreen() {
   const colors = useColors();
-  const { profile, resetWallet } = useWallet();
+  const { profile, lockWallet, resetWallet } = useWallet();
   const [supply, setSupply] = useState<string | null>(null);
   const [metricsStatus, setMetricsStatus] = useState('Loading Agora public metrics…');
   const [loggingOut, setLoggingOut] = useState(false);
@@ -28,7 +28,7 @@ export default function ProfileScreen() {
     getAgoraMetrics()
       .then((metrics) => {
         if (!mounted) return;
-        const value = formatSupply(metrics.totalSupply);
+        const value = formatSupply(metrics.circulatingSupply);
         if (metrics.partial || !value) {
           setMetricsStatus('Agora reports a partial network snapshot.');
         } else {
@@ -51,7 +51,8 @@ export default function ProfileScreen() {
   async function disconnect() {
     setLoggingOut(true);
     try {
-      await resetWallet();
+      if (profile?.mode === 'demo') await resetWallet();
+      else lockWallet();
       router.replace('/');
     } finally {
       setLoggingOut(false);
@@ -112,10 +113,10 @@ export default function ProfileScreen() {
         </View>
         <Divider />
         <Text style={[styles.contractCaption, { color: colors.mutedForeground }]}>
-          Contract reference supplied for this prototype
+          Agora Instant Settlement factory · Monad testnet
         </Text>
         <Text selectable style={[styles.address, { color: colors.foreground }]}>
-          {MONAD_TESTNET.contractAddress}
+          {MONAD_TESTNET.factoryAddress}
         </Text>
         <Pressable
           onPress={() => void Linking.openURL(MONAD_TESTNET.explorerUrl)}
@@ -128,22 +129,22 @@ export default function ProfileScreen() {
 
       {profile?.address ? (
         <Card style={styles.detailCard}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Your passkey wallet</Text>
+          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Your Monad smart account</Text>
           <Text selectable style={[styles.address, { color: colors.foreground }]}>
             {profile.address}
           </Text>
           <Text style={[styles.metricCaption, { color: colors.mutedForeground }]}>
-            Derived from Mera PRF. Secret material is not saved to device storage.
+            Counterfactual Kernel account. AUSD must be sent to this address. Mera signer: {profile.signerAddress ?? 'legacy account'}.
           </Text>
         </Card>
       ) : null}
 
       <InlineNotice icon="info" tone="warning">
-        The provided explorer address is verified as an AgoraStableSwapFactory proxy. It is not shown as a transfer contract. The app only checks its deployed bytecode and sends no transaction.
+        Sends submit an ERC-20 AUSD transfer from the Kernel account through Pimlico on Monad testnet. The account must hold testnet AUSD and Pimlico must approve the sponsorship request.
       </InlineNotice>
 
       <PrimaryButton
-        label="Lock this wallet"
+        label={profile?.mode === 'demo' ? 'Exit demo wallet' : 'Lock this wallet'}
         icon="log-out"
         secondary
         loading={loggingOut}

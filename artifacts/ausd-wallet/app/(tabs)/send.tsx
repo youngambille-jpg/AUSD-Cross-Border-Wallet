@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { isAddress } from 'viem';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
+import { getAUSDBalance } from '@/services/passkey';
 import {
   Body,
   Card,
@@ -14,38 +16,41 @@ import {
   Title,
 } from '@/components/Primitives';
 
-const corridors = [
-  { code: 'NGN', label: 'Nigeria', symbol: '₦', rate: 1480 },
-  { code: 'GBP', label: 'United Kingdom', symbol: '£', rate: 0.79 },
-  { code: 'GHS', label: 'Ghana', symbol: 'GH₵', rate: 15.2 },
-  { code: 'USD', label: 'United States', symbol: '$', rate: 1 },
-];
-
 const formatAmount = (amount: number, digits = 2) =>
   amount.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 export default function SendScreen() {
   const colors = useColors();
-  const { balance } = useWallet();
+  const { profile, balance } = useWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('NGN');
   const [error, setError] = useState('');
-  const selected = corridors.find((corridor) => corridor.code === currency) ?? corridors[0];
+  const [onchainBalance, setOnchainBalance] = useState<string | null>(null);
+  const [balanceError, setBalanceError] = useState('');
   const parsedAmount = Number(amount);
-  const receiveAmount = useMemo(
-    () => (Number.isFinite(parsedAmount) ? parsedAmount * selected.rate : 0),
-    [parsedAmount, selected.rate],
-  );
+  const displayedBalance = profile?.mode === 'mera' ? Number(onchainBalance ?? 0) : balance;
+
+  useEffect(() => {
+    if (profile?.mode !== 'mera' || !profile.address) return;
+    let active = true;
+    getAUSDBalance(profile.address)
+      .then((value) => { if (active) setOnchainBalance(value); })
+      .catch((caught: unknown) => {
+        if (active) setBalanceError(caught instanceof Error ? caught.message : 'Could not load Monad AUSD balance.');
+      });
+    return () => { active = false; };
+  }, [profile?.address, profile?.mode]);
 
   function continueToReview() {
     setError('');
-    if (!recipient.trim()) return setError('Add a recipient name or wallet address.');
+    if (!isAddress(recipient.trim(), { strict: false })) return setError('Enter a valid recipient wallet address.');
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return setError('Enter an amount greater than zero.');
-    if (parsedAmount > balance) return setError('This amount is higher than the demo balance.');
+    if (!/^\d+(\.\d{1,6})?$/.test(amount)) return setError('AUSD supports up to six decimal places.');
+    if (profile?.mode === 'mera' && onchainBalance === null) return setError(balanceError || 'Wait for your Monad testnet balance to load.');
+    if (parsedAmount > displayedBalance) return setError(`Your available balance is ${formatAmount(displayedBalance)} AUSD.`);
     router.push({
       pathname: '/review',
-      params: { recipient: recipient.trim(), amount: String(parsedAmount), currency },
+      params: { recipient: recipient.trim(), amount },
     });
   }
 
@@ -54,14 +59,14 @@ export default function SendScreen() {
       <View style={styles.heading}>
         <Eyebrow>Send AUSD</Eyebrow>
         <Title>Who are you sending to?</Title>
-        <Body>Choose a person and amount. You’ll review the details before the testnet check.</Body>
+        <Body>Send AUSD directly to a wallet on Monad testnet. Pimlico sponsorship is requested when you confirm.</Body>
       </View>
 
       <Field
-        label="Recipient"
+        label="Recipient wallet address"
         value={recipient}
         onChangeText={setRecipient}
-        placeholder="Name, email or wallet address"
+        placeholder="0x…"
         autoCapitalize="none"
         testID="recipient-input"
       />
@@ -87,53 +92,33 @@ export default function SendScreen() {
           testID="amount-input"
         />
         <Text style={[styles.balanceHint, { color: colors.mutedForeground }]}>
-          Demo balance: {formatAmount(balance)} AUSD
+          {profile?.mode === 'mera'
+            ? onchainBalance === null ? balanceError || 'Loading Monad testnet balance…' : `Monad testnet balance: ${formatAmount(displayedBalance)} AUSD`
+            : `Demo balance: ${formatAmount(balance)} AUSD`}
         </Text>
       </Card>
 
       <View style={styles.destinationBlock}>
         <View style={styles.destinationHead}>
-          <Text style={[styles.destinationTitle, { color: colors.foreground }]}>They receive</Text>
-          <Text style={[styles.destinationMeta, { color: colors.mutedForeground }]}>Destination</Text>
-        </View>
-        <View style={styles.chips}>
-          {corridors.map((corridor) => {
-            const active = corridor.code === currency;
-            return (
-              <Pressable
-                key={corridor.code}
-                onPress={() => setCurrency(corridor.code)}
-                style={[
-                  styles.countryChip,
-                  {
-                    borderColor: active ? colors.foreground : colors.border,
-                    backgroundColor: active ? colors.foreground : colors.background,
-                  },
-                ]}
-              >
-                <Text style={[styles.countryCode, { color: active ? colors.background : colors.foreground }]}>
-                  {corridor.code}
-                </Text>
-              </Pressable>
-            );
-          })}
+          <Text style={[styles.destinationTitle, { color: colors.foreground }]}>Recipient gets</Text>
+          <Text style={[styles.destinationMeta, { color: colors.mutedForeground }]}>AUSD on Monad</Text>
         </View>
         <Card style={styles.receiveCard}>
           <View style={styles.receiveTop}>
             <Text style={[styles.receiveAmount, { color: colors.foreground }]}>
-              {selected.symbol}{formatAmount(receiveAmount, selected.code === 'NGN' || selected.code === 'GHS' ? 0 : 2)}
+              {formatAmount(Number.isFinite(parsedAmount) ? parsedAmount : 0)} AUSD
             </Text>
-            <Text style={[styles.countryName, { color: colors.mutedForeground }]}>{selected.label}</Text>
+            <Text style={[styles.countryName, { color: colors.mutedForeground }]}>Exact token amount</Text>
           </View>
           <Text style={[styles.rateText, { color: colors.mutedForeground }]}>
-            Demo rate · 1 AUSD ≈ {selected.symbol}{formatAmount(selected.rate, selected.code === 'NGN' ? 0 : 2)} {selected.code}
+            Fiat payouts and currency conversion are not part of this on-chain send.
           </Text>
         </Card>
       </View>
 
       <View style={styles.feeRow}>
-        <Text style={[styles.feeLabel, { color: colors.mutedForeground }]}>Estimated fee</Text>
-        <Text style={[styles.feeValue, { color: colors.foreground }]}>0.00 AUSD</Text>
+        <Text style={[styles.feeLabel, { color: colors.mutedForeground }]}>Network gas</Text>
+        <Text style={[styles.feeValue, { color: colors.foreground }]}>Pimlico sponsorship requested</Text>
       </View>
 
       {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
@@ -144,7 +129,7 @@ export default function SendScreen() {
         testID="review-transfer"
       />
       <InlineNotice icon="info">
-        Local exchange rates are examples only and are not live quotes.
+        Demo wallets cannot send. A Mera passkey smart account and a funded Monad testnet AUSD balance are required.
       </InlineNotice>
     </Page>
   );
@@ -164,14 +149,6 @@ const styles = StyleSheet.create({
   destinationHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   destinationTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
   destinationMeta: { fontSize: 11, fontFamily: 'Inter_500Medium' },
-  chips: { flexDirection: 'row', gap: 8 },
-  countryChip: {
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  countryCode: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   receiveCard: { padding: 14, gap: 6 },
   receiveTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   receiveAmount: { fontSize: 23, letterSpacing: -0.8, fontFamily: 'Inter_600SemiBold' },
