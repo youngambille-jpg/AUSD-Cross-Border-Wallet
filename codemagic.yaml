@@ -8,6 +8,7 @@ workflows:
         - ausd_wallet
       vars:
         AUSD_ANDROID_PACKAGE: com.ausd.wallet
+        COREPACK_ENABLE_PROJECT_SPEC: "0"
     triggering:
       events:
         - push
@@ -21,7 +22,9 @@ workflows:
           corepack enable
           corepack prepare pnpm@10.26.1 --activate
       - name: Install workspace dependencies
-        script: pnpm install --frozen-lockfile
+        script: |
+          cd "$CM_BUILD_DIR"
+          pnpm install --frozen-lockfile
       - name: Generate Android project with Expo
         script: |
           cd "$CM_BUILD_DIR/artifacts/ausd-wallet"
