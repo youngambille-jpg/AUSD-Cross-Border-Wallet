@@ -36,13 +36,8 @@ export default function ActivityScreen() {
                       day: 'numeric',
                       hour: 'numeric',
                       minute: '2-digit',
-                    })} · {transfer.settlementKind === 'agora-instant-settlement' ? 'AGORA SETTLEMENT' : transfer.currency} · {transfer.transactionHash ? 'CONFIRMED · GAS SPONSORED' : 'SIMULATED'}
+                    })} · {transfer.currency} · {transfer.transactionHash ? 'CONFIRMED · GAS SPONSORED' : 'SIMULATED'}
                   </Text>
-                  {transfer.receivedCurrency && transfer.receivedCurrency !== transfer.currency ? (
-                    <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                      Recipient received {amountText(transfer.receivedAmount)} {transfer.receivedCurrency}
-                    </Text>
-                  ) : null}
                   {transfer.transactionHash ? (
                     <Pressable onPress={() => void Linking.openURL(`https://testnet.monadvision.com/tx/${transfer.transactionHash}`)}>
                       <Text style={[styles.meta, { color: colors.primary }]} numberOfLines={1}>View transaction on MonadVision</Text>
@@ -50,7 +45,7 @@ export default function ActivityScreen() {
                   ) : null}
                 </View>
                 <Text style={[styles.amount, { color: colors.foreground }]}>
-                  −{amountText(transfer.amount)} {transfer.currency}
+                  −{amountText(transfer.amount)}
                 </Text>
               </View>
             </React.Fragment>

@@ -1,184 +1,228 @@
-import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
-import { authenticateMeraPasskey, getPasskeyErrorMessage } from '@/services/passkey';
-import { BrandHeader, Card, Eyebrow, Page, PrimaryButton, Title } from '@/components/Primitives';
-
-const slides = [
-  {
-    icon: 'globe' as const,
-    eyebrow: 'MONEY WITHOUT BORDERS',
-    title: 'Send dollar value, wherever life takes you.',
-    body: 'Move AUSD between people with a clear amount and a recipient you choose.',
-  },
-  {
-    icon: 'shield' as const,
-    eyebrow: 'SECURITY THAT FEELS FAMILIAR',
-    title: 'Your passkey protects every move.',
-    body: 'Mera uses your device authenticator: fingerprint, face, or your screen lock. No extra password to remember.',
-  },
-  {
-    icon: 'zap' as const,
-    eyebrow: 'AGORA INSTANT SETTLEMENT',
-    title: 'See a cross-border swap settle on Monad.',
-    body: 'Try an AUSD to CTK payout using Agora’s testnet pair. These are test tokens, not real-world payouts.',
-  },
-];
+import { authenticateMeraPasskey, createMeraPasskey } from '@/services/passkey';
+import {
+  Body,
+  BrandHeader,
+  Card,
+  Eyebrow,
+  Field,
+  InlineNotice,
+  Page,
+  PrimaryButton,
+  Title,
+} from '@/components/Primitives';
 
 export default function WelcomeScreen() {
   const colors = useColors();
-  const { width } = useWindowDimensions();
-  const viewportWidth = width - 4;
-  const { ready, profile, authenticated, introComplete, completeIntro, unlockWallet, storageError } = useWallet();
-  const [slide, setSlide] = useState(0);
+  const { ready, profile, authenticated, completeOnboarding, unlockWallet } = useWallet();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const carousel = useRef<ScrollView>(null);
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (ready && profile && authenticated) router.replace('/(tabs)');
   }, [ready, profile, authenticated]);
 
-  async function finishIntro() {
-    await completeIntro();
-    router.push('/create-account');
-  }
-
-  async function unlock() {
-    if (!profile?.passkey || !profile.address) {
-      setError('This saved wallet is missing its passkey details. Your data has not been deleted.');
+  async function beginPasskey() {
+    setError('');
+    if (profile) {
+      if (profile.mode !== 'mera' || !profile.address || !profile.passkey) {
+        setError('This saved account is missing its Mera credential metadata. Reset the local wallet and set it up again.');
+        return;
+      }
+      setBusy(true);
+      try {
+        await authenticateMeraPasskey({
+          address: profile.address,
+          credential: profile.passkey.credential,
+          rpId: profile.passkey.rpId,
+        });
+        unlockWallet();
+        router.replace('/(tabs)');
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Passkey verification did not complete.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (displayName.trim().length < 2) {
+      setError('Enter the name you want associated with this passkey.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError('Enter a valid email address.');
       return;
     }
     setBusy(true);
-    setError('');
     try {
-      await authenticateMeraPasskey({
-        address: profile.address,
-        signerAddress: profile.signerAddress ?? profile.address,
-        credential: profile.passkey.credential,
-        rpId: profile.passkey.rpId,
+      const account = await createMeraPasskey(displayName.trim(), email.trim());
+      await completeOnboarding({
+        address: account.address,
+        displayName: displayName.trim(),
+        email: email.trim(),
+        mode: 'mera',
+        passkey: { credential: account.credential, rpId: account.rpId },
       });
-      unlockWallet();
       router.replace('/(tabs)');
     } catch (caught) {
-      setError(getPasskeyErrorMessage(caught));
+      setError(caught instanceof Error ? caught.message : 'Passkey setup did not complete.');
     } finally {
       setBusy(false);
     }
   }
 
+  async function previewWallet() {
+    await completeOnboarding({
+      displayName: 'Alex',
+      email: 'preview@ausd.app',
+      mode: 'demo',
+    });
+    router.replace('/(tabs)');
+  }
+
   if (!ready || (profile && authenticated)) {
-    return <View style={[styles.loading, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.primary} /></View>;
-  }
-
-  if (storageError) {
     return (
-      <Page contentStyle={styles.centeredPage}>
-        <BrandHeader />
-        <Card style={{ backgroundColor: colors.secondary }}>
-          <Eyebrow>Wallet storage</Eyebrow>
-          <Text style={[styles.body, { color: colors.foreground }]}>{storageError}</Text>
-        </Card>
-      </Page>
+      <View style={[styles.loading, { backgroundColor: colors.background }]}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
     );
-  }
-
-  if (profile) {
-    return (
-      <Page contentStyle={styles.returningPage}>
-        <BrandHeader />
-        <View style={styles.returningHero}>
-          <View style={[styles.returningIcon, { backgroundColor: colors.secondary }]}><Feather name="key" size={24} color={colors.primary} /></View>
-          <Eyebrow>WELCOME BACK</Eyebrow>
-          <Title>Good to see you, {profile.displayName}.</Title>
-          <Text style={[styles.body, { color: colors.mutedForeground }]}>Unlock your wallet with the passkey saved on this device.</Text>
-        </View>
-        {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-        <PrimaryButton label="Continue with passkey" icon="key" loading={busy} onPress={unlock} testID="unlock-passkey" />
-        <Text style={[styles.footnote, { color: colors.mutedForeground }]}>Fingerprint, face, or device screen lock · Monad testnet</Text>
-      </Page>
-    );
-  }
-
-  if (introComplete) {
-    router.replace('/create-account');
-    return <View style={[styles.loading, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.primary} /></View>;
   }
 
   return (
     <Page contentStyle={styles.page}>
       <BrandHeader />
-      <ScrollView
-        ref={carousel}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={(event) => setSlide(Math.round(event.nativeEvent.contentOffset.x / viewportWidth))}
-        style={styles.carousel}
-      >
-        {slides.map((item, index) => (
-          <View key={item.eyebrow} style={[styles.slide, { width: viewportWidth }]}>
-            <View style={[styles.art, { backgroundColor: colors.secondary }]}>
-              <View style={[styles.artHalo, { borderColor: colors.border }]} />
-              <View style={[styles.artCore, { backgroundColor: colors.primary }]}>
-                <Feather name={item.icon} size={34} color={colors.primaryForeground} />
-              </View>
-              <View style={[styles.artDot, { backgroundColor: colors.foreground }]} />
-            </View>
-            <Eyebrow>{item.eyebrow}</Eyebrow>
-            <Title size={34}>{item.title}</Title>
-            <Text style={[styles.slideBody, { color: colors.mutedForeground }]}>{item.body}</Text>
-            {index === 2 ? <Text style={[styles.testnetLabel, { color: colors.primary }]}>MONAD TESTNET · AUSD → CTK MOCK PAYOUT</Text> : null}
-          </View>
-        ))}
-      </ScrollView>
-      <View style={styles.footer}>
-        <View style={styles.dots}>
-          {slides.map((item, index) => <View key={item.eyebrow} style={[styles.dot, { backgroundColor: slide === index ? colors.primary : colors.border, width: slide === index ? 22 : 6 }]} />)}
+      <View style={styles.hero}>
+        <View style={[styles.heroMark, { backgroundColor: colors.secondary }]}>
+          <View style={[styles.orbit, { borderColor: colors.foreground }]} />
+          <View style={[styles.orbitCore, { backgroundColor: colors.primary }]} />
+          <View style={[styles.orbitDot, { backgroundColor: colors.foreground }]} />
         </View>
+        <Eyebrow>Money moves at your pace</Eyebrow>
+        <Title size={38}>Send AUSD.{'\n'}Across any border.</Title>
+        <Body>
+          A simple way to send dollar value to people near and far. Sign in with a
+          passkey, then preview near-instant settlement on Monad testnet.
+        </Body>
+      </View>
+
+      {profile ? (
+        <Card style={styles.returningCard}>
+          <Eyebrow>Welcome back</Eyebrow>
+          <Text style={[styles.returningName, { color: colors.foreground }]}>{profile.displayName}</Text>
+          {profile.address ? (
+            <Text selectable style={[styles.returningAddress, { color: colors.mutedForeground }]}>
+              {profile.address}
+            </Text>
+          ) : null}
+        </Card>
+      ) : (
+        <View style={styles.fields}>
+          <Field
+            label="Your name"
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder="Name shown on your account"
+            autoCapitalize="words"
+            testID="name-input"
+          />
+          <Field
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            keyboardType="email-address"
+            testID="email-input"
+          />
+        </View>
+      )}
+
+      <View style={styles.actionGroup}>
         <PrimaryButton
-          label={slide === slides.length - 1 ? 'Create your account' : 'Next'}
-          icon={slide === slides.length - 1 ? 'arrow-right' : undefined}
-          onPress={() => slide === slides.length - 1
-            ? void finishIntro()
-            : carousel.current?.scrollTo({ x: (slide + 1) * viewportWidth, animated: true })}
-          testID="onboarding-next"
+          label={profile ? 'Continue with passkey' : 'Create a passkey'}
+          icon="key"
+          loading={busy}
+          onPress={beginPasskey}
+          testID="create-passkey"
         />
-        {slide < slides.length - 1 ? (
-          <Pressable onPress={() => void finishIntro()} style={styles.skipButton}>
-            <Text style={[styles.skipText, { color: colors.mutedForeground }]}>Skip introduction</Text>
+        {!profile ? (
+          <Pressable
+            testID="preview-wallet"
+            onPress={previewWallet}
+            style={({ pressed }) => [styles.previewLink, { opacity: pressed ? 0.55 : 1 }]}
+          >
+            <Text style={[styles.previewText, { color: colors.foreground }]}>
+              Explore a demo wallet
+            </Text>
+            <Text style={[styles.arrow, { color: colors.primary }]}>→</Text>
           </Pressable>
         ) : null}
-        <Text style={[styles.footnote, { color: colors.mutedForeground }]}>Testnet only · no real funds or fiat payouts</Text>
+      </View>
+
+      {error ? (
+        <Card style={{ backgroundColor: colors.secondary }}>
+          <Eyebrow>Passkey setup</Eyebrow>
+          <Text style={[styles.errorText, { color: colors.mutedForeground }]}>{error}</Text>
+          <InlineNotice icon="shield">
+            The demo path never creates a credential or signs a transaction.
+          </InlineNotice>
+        </Card>
+      ) : null}
+
+      <View style={styles.footer}>
+        <Text style={[styles.footerText, { color: colors.mutedForeground }]}>
+          No real funds move in this preview.
+        </Text>
       </View>
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, justifyContent: 'space-between', gap: 12, paddingTop: 8, paddingBottom: 8 },
-  centeredPage: { flex: 1, justifyContent: 'center', gap: 20 },
+  page: { justifyContent: 'space-between', gap: 18 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  carousel: { flexGrow: 0, flex: 1, marginHorizontal: -22 },
-  slide: { paddingHorizontal: 22, justifyContent: 'center', gap: 18 },
-  art: { width: 174, height: 174, borderRadius: 52, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 8, position: 'relative' },
-  artHalo: { width: 112, height: 112, borderWidth: 1, borderRadius: 60, alignItems: 'center', justifyContent: 'center' },
-  artCore: { position: 'absolute', width: 70, height: 70, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
-  artDot: { position: 'absolute', width: 11, height: 11, borderRadius: 6, top: 33, right: 38 },
-  slideBody: { fontSize: 15, lineHeight: 23, fontFamily: 'Inter_400Regular' },
-  testnetLabel: { fontSize: 9, letterSpacing: 0.75, fontFamily: 'Inter_700Bold' },
-  footer: { gap: 12 },
-  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 4 },
-  dot: { height: 6, borderRadius: 4 },
-  skipButton: { minHeight: 38, justifyContent: 'center', alignItems: 'center' },
-  skipText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
-  returningPage: { flex: 1, justifyContent: 'space-between', gap: 24, paddingTop: 8, paddingBottom: 18 },
-  returningHero: { gap: 13 },
-  returningIcon: { width: 56, height: 56, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  body: { fontSize: 14, lineHeight: 21, fontFamily: 'Inter_400Regular' },
-  error: { fontSize: 12, lineHeight: 18, fontFamily: 'Inter_500Medium' },
-  footnote: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular' },
+  hero: { gap: 15, paddingTop: 6 },
+  fields: { gap: 13 },
+  returningCard: { gap: 6 },
+  returningName: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
+  returningAddress: { fontSize: 10, lineHeight: 15, fontFamily: 'Inter_400Regular' },
+  heroMark: {
+    width: 84,
+    height: 84,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 7,
+    position: 'relative',
+  },
+  orbit: { width: 46, height: 46, borderWidth: 5, borderRadius: 24 },
+  orbitCore: {
+    position: 'absolute',
+    right: 20,
+    top: 22,
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    borderWidth: 3,
+    borderColor: '#ffffff',
+  },
+  orbitDot: { position: 'absolute', right: 13, top: 15, width: 7, height: 7, borderRadius: 4 },
+  actionGroup: { gap: 9, marginTop: 8 },
+  previewLink: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+  },
+  previewText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  arrow: { fontSize: 18, fontFamily: 'Inter_600SemiBold' },
+  errorText: { fontSize: 13, lineHeight: 19, fontFamily: 'Inter_400Regular' },
+  footer: { alignItems: 'center', paddingTop: 4 },
+  footerText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
 });

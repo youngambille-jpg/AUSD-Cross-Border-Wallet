@@ -342,10 +342,9 @@ export async function sendSponsoredInstantSettlementSwap(
       throw new Error('The Agora quote changed. Return to the send form and review the updated payout.');
     }
     const pairAddress = freshQuote.pairAddress;
-    const [decimals, balance, role, approved, allowance, token0, token1, whitelisterCode] = await Promise.all([
+    const [decimals, balance, approved, allowance, token0, token1, whitelisterCode] = await Promise.all([
       publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'decimals' }),
       publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'balanceOf', args: [kernelAccount.address] }),
-      publicClient.readContract({ address: pairAddress, abi: pairAbi, functionName: 'APPROVED_SWAPPER' }),
       publicClient.readContract({ address: pairAddress, abi: pairAbi, functionName: 'hasRole', args: ['APPROVED_SWAPPER', kernelAccount.address] }),
       publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'allowance', args: [kernelAccount.address, pairAddress] }),
       publicClient.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token0' }),
