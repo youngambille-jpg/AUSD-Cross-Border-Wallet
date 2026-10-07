@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { isAddress } from 'viem';
 import { useColors } from '@/hooks/useColors';
@@ -13,6 +13,7 @@ import {
 import { MONAD_TESTNET } from '@/services/settlement';
 import {
   BackButton,
+  Card,
   Eyebrow,
   Page,
   PrimaryButton,
@@ -32,6 +33,10 @@ export default function ReviewScreen() {
   const recipient = typeof params.recipient === 'string' ? params.recipient.trim() : '';
   const settlement = params.mode === 'settlement';
   const quoteOutput = typeof params.quoteOutput === 'string' ? params.quoteOutput : '';
+  const quoteCheckedAt = typeof params.quoteCheckedAt === 'string' ? params.quoteCheckedAt : '';
+  const quoteTime = quoteCheckedAt && Number.isFinite(Date.parse(quoteCheckedAt))
+    ? new Date(quoteCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : '';
 
   async function confirmTransfer() {
     if (!profile) {
@@ -117,37 +122,66 @@ export default function ReviewScreen() {
         <Eyebrow>{settlement ? 'AGORA INSTANT SETTLEMENT' : 'FINAL CHECK'}</Eyebrow>
         <Title>{settlement ? 'Review payout' : 'Review send'}</Title>
       </View>
-      <View style={[styles.amountPanel, { backgroundColor: colors.secondary }]}>
-        <Text style={[styles.amountLabel, { color: colors.mutedForeground }]}>YOU SEND</Text>
-        <Text style={[styles.amountValue, { color: colors.foreground }]}>
-          {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} <Text style={styles.amountUnit}>AUSD</Text>
-        </Text>
-      </View>
-      {settlement ? (
-        <View style={[styles.receivePanel, { backgroundColor: colors.secondary }]}>
-          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>RECIPIENT GETS · AFTER AGORA FEES</Text>
-          <Text style={[styles.receiveValue, { color: colors.foreground }]}>{quoteOutput ? `${Number(quoteOutput).toLocaleString('en-US', { maximumFractionDigits: 6 })} CTK` : 'Quote missing'}</Text>
-          <Text style={[styles.quoteNote, { color: colors.mutedForeground }]}>CTK is a mock payout token on Monad testnet. This does not represent a real currency payout.</Text>
+      <Card style={styles.summaryCard}>
+        <View style={styles.summaryLine}>
+          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>YOU SEND</Text>
+          <Text style={[styles.amountValue, { color: colors.foreground }]}>
+            {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} <Text style={[styles.amountUnit, { color: colors.mutedForeground }]}>AUSD</Text>
+          </Text>
+        </View>
+        <View style={[styles.rule, { backgroundColor: colors.border }]} />
+        <View style={styles.summaryLine}>
+          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>{settlement ? 'AGORA QUOTED OUTPUT' : 'RECIPIENT RECEIVES'}</Text>
+          <Text style={[styles.outputValue, { color: colors.foreground }]}>
+            {settlement
+              ? quoteOutput ? `${Number(quoteOutput).toLocaleString('en-US', { maximumFractionDigits: 6 })} CTK` : 'Quote unavailable'
+              : `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} AUSD`}
+          </Text>
+        </View>
+        {settlement ? (
+          <Text style={[styles.quoteNote, { color: colors.mutedForeground }]}>
+            {quoteTime ? `Quote from ${quoteTime} · ` : ''}CTK is a Monad testnet mock payout token, not fiat. The quote includes the pair’s conversion result; no separate fee breakdown is available here.
+          </Text>
+        ) : null}
+      </Card>
+      <Card style={styles.detailsCard}>
+        <View style={styles.detailRow}>
+          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>TO</Text>
+          <Text selectable style={[styles.recipient, { color: colors.foreground }]}>{recipient}</Text>
+        </View>
+        <View style={[styles.rule, { backgroundColor: colors.border }]} />
+        <View style={styles.detailRow}>
+          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>NETWORK</Text>
+          <Text style={[styles.detailValue, { color: colors.foreground }]}>{MONAD_TESTNET.name}</Text>
+        </View>
+        <View style={[styles.rule, { backgroundColor: colors.border }]} />
+        <View style={styles.detailRow}>
+          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>NETWORK FEE</Text>
+          <Text style={[styles.detailValue, { color: colors.foreground }]}>Sponsorship requested · no MON if approved</Text>
+        </View>
+      </Card>
+      {settlement ? <Text style={[styles.firstTimeNote, { color: colors.mutedForeground }]}>First use may enable this testnet wallet and approve the pair. One passkey approval covers the sponsored batch.</Text> : null}
+      {busy ? (
+        <View accessibilityLiveRegion="polite" style={[styles.progressPanel, { backgroundColor: colors.secondary }]}>
+          <ActivityIndicator color={colors.primary} />
+          <View style={styles.progressCopy}>
+            <Text style={[styles.progressTitle, { color: colors.foreground }]}>Waiting for confirmation</Text>
+            <Text style={[styles.networkCaption, { color: colors.mutedForeground }]}>Approve with your passkey, then we’ll wait for Monad testnet to confirm.</Text>
+          </View>
         </View>
       ) : null}
-      <View style={styles.recipientBlock}>
-        <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>TO</Text>
-        <Text selectable style={[styles.recipient, { color: colors.foreground }]}>{recipient}</Text>
-      </View>
-      <View style={styles.networkRow}>
-        <View style={[styles.networkIcon, { backgroundColor: colors.secondary }]}>
-          <Feather name="zap" size={16} color={colors.primary} />
+      {error ? (
+        <View accessibilityRole="alert" style={[styles.errorPanel, { backgroundColor: colors.secondary }]}>
+          <Feather name="alert-circle" size={17} color={colors.destructive} />
+          <View style={styles.progressCopy}>
+            <Text style={[styles.progressTitle, { color: colors.destructive }]}>Transfer not confirmed</Text>
+            <Text style={[styles.error, { color: colors.mutedForeground }]}>{error}</Text>
+            <Text style={[styles.errorHint, { color: colors.mutedForeground }]}>If you approved a transaction, check Activity or MonadVision before trying again.</Text>
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.networkTitle, { color: colors.foreground }]}>{MONAD_TESTNET.name}</Text>
-          <Text style={[styles.networkCaption, { color: colors.mutedForeground }]}>{settlement ? 'Agora pair swap · gas sponsorship requested' : 'Direct AUSD transfer · gas sponsorship requested'}</Text>
-        </View>
-        <Feather name="check-circle" size={17} color={colors.primary} />
-      </View>
-      {settlement ? <Text style={[styles.firstTimeNote, { color: colors.mutedForeground }]}>First use may enable this testnet wallet and approve the pair. One passkey approval covers the sponsored batch.</Text> : null}
-      {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
+      ) : null}
       <PrimaryButton
-        label={settlement ? 'Confirm instant settlement' : 'Confirm & send AUSD'}
+        label={busy ? 'Confirming on Monad…' : settlement ? 'Approve & settle' : 'Approve & send'}
         icon="arrow-right"
         onPress={confirmTransfer}
         loading={busy}
@@ -159,23 +193,27 @@ export default function ReviewScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { gap: 22, paddingTop: 8 },
+  page: { gap: 16, paddingTop: 8 },
   heading: { gap: 6, marginTop: 5 },
-  amountPanel: { borderRadius: 22, paddingHorizontal: 20, paddingVertical: 22, gap: 10 },
-  amountLabel: { fontSize: 10, letterSpacing: 1, fontFamily: 'Inter_600SemiBold' },
-  amountValue: { fontSize: 34, letterSpacing: -1.1, fontFamily: 'Inter_600SemiBold' },
+  summaryCard: { gap: 12, padding: 16 },
+  summaryLine: { gap: 7 },
+  rule: { height: StyleSheet.hairlineWidth },
+  amountValue: { fontSize: 27, letterSpacing: -0.7, fontFamily: 'Inter_600SemiBold' },
   amountUnit: { fontSize: 17, fontFamily: 'Inter_500Medium' },
-  receivePanel: { borderRadius: 18, padding: 16, gap: 7 },
-  receiveValue: { fontSize: 22, fontFamily: 'Inter_600SemiBold' },
+  outputValue: { fontSize: 20, fontFamily: 'Inter_600SemiBold' },
   quoteNote: { fontSize: 10, lineHeight: 15, fontFamily: 'Inter_400Regular' },
-  recipientBlock: { gap: 7 },
+  detailsCard: { gap: 11, padding: 15 },
+  detailRow: { gap: 6 },
   metaLabel: { fontSize: 10, letterSpacing: 0.8, fontFamily: 'Inter_600SemiBold' },
   recipient: { fontSize: 13, lineHeight: 19, fontFamily: 'Inter_500Medium' },
-  networkRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 3 },
-  networkIcon: { height: 38, width: 38, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  networkTitle: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  detailValue: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   networkCaption: { marginTop: 3, fontSize: 10, fontFamily: 'Inter_400Regular' },
-  error: { fontSize: 12, lineHeight: 17, fontFamily: 'Inter_500Medium' },
+  progressPanel: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, padding: 14 },
+  progressCopy: { flex: 1, gap: 4 },
+  progressTitle: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  errorPanel: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: 14, padding: 14 },
+  error: { fontSize: 11, lineHeight: 16, fontFamily: 'Inter_400Regular' },
+  errorHint: { fontSize: 10, lineHeight: 15, fontFamily: 'Inter_400Regular' },
   disclaimer: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular' },
   firstTimeNote: { fontSize: 10, lineHeight: 15, fontFamily: 'Inter_400Regular' },
 });

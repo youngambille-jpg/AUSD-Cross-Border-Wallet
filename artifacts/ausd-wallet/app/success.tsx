@@ -32,18 +32,24 @@ export default function SimulationSuccessScreen() {
   const receiveCurrency = typeof params.receiveCurrency === 'string' ? params.receiveCurrency : 'AUSD';
   const settledThroughAgora = params.settlement === 'agora';
   const transactionHash = params.transactionHash;
+  const explorerUrl = transactionHash
+    ? `https://testnet.monadvision.com/tx/${transactionHash}`
+    : '';
 
   return (
     <Page contentStyle={styles.page}>
-      <View style={styles.successIcon}>
+      <View style={[styles.successIcon, { backgroundColor: colors.primary }]}>
         <Feather name="check" size={27} color={colors.primaryForeground} />
       </View>
-      <Eyebrow>{settledThroughAgora ? 'AGORA SETTLEMENT CONFIRMED' : 'MONAD TESTNET CONFIRMED'}</Eyebrow>
-      <Title>{settledThroughAgora ? 'Payout settled.' : 'AUSD is on its way.'}</Title>
+      <View style={[styles.confirmedBadge, { backgroundColor: colors.secondary }]}>
+        <View style={[styles.confirmedDot, { backgroundColor: colors.primary }]} />
+        <Text style={[styles.confirmedText, { color: colors.foreground }]}>CONFIRMED ON MONAD TESTNET</Text>
+      </View>
+      <Title>{settledThroughAgora ? 'Settlement confirmed' : 'Transfer confirmed'}</Title>
       <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
         {settledThroughAgora
-          ? 'The Agora Instant Settlement swap and recipient payout were included in one sponsored Monad testnet transaction.'
-          : 'Your sponsored AUSD wallet transfer was included on Monad testnet.'}
+          ? 'The Agora AUSD-to-CTK swap was included in a confirmed sponsored transaction.'
+          : 'Your AUSD transfer was included in a confirmed sponsored transaction.'}
       </Text>
 
       <Card style={styles.receipt}>
@@ -51,27 +57,37 @@ export default function SimulationSuccessScreen() {
           {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} AUSD
         </Text>
         <View style={[styles.receivePanel, { backgroundColor: colors.secondary }]}>
-          <Text style={[styles.receivesLabel, { color: colors.mutedForeground }]}>{settledThroughAgora ? 'RECIPIENT RECEIVES · AGORA PAIR' : 'RECIPIENT RECEIVES'}</Text>
+          <Text style={[styles.receivesLabel, { color: colors.mutedForeground }]}>{settledThroughAgora ? 'TESTNET OUTPUT · AGORA QUOTE' : 'RECIPIENT RECEIVES'}</Text>
           <Text style={[styles.receivesValue, { color: colors.foreground }]}>
             {receiveAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} {receiveCurrency}
           </Text>
         </View>
-        <Text style={[styles.to, { color: colors.mutedForeground }]}>
-          To {params.recipient ?? 'recipient'}
-        </Text>
+        <View style={[styles.receiptDivider, { backgroundColor: colors.border }]} />
+        <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>RECIPIENT</Text>
+        <Text selectable style={[styles.to, { color: colors.foreground }]}>{params.recipient ?? 'Recipient unavailable'}</Text>
         {params.accountAddress ? <Text selectable style={[styles.reference, { color: colors.mutedForeground }]}>From smart account · {params.accountAddress}</Text> : null}
-        {params.blockNumber ? <Text style={[styles.reference, { color: colors.mutedForeground }]}>Block · {params.blockNumber} · Gas sponsored by Pimlico</Text> : null}
+        {params.blockNumber ? <Text style={[styles.reference, { color: colors.mutedForeground }]}>Block {params.blockNumber} · Gas sponsored by Pimlico</Text> : null}
         {transactionHash ? (
-          <Pressable onPress={() => void Linking.openURL(`https://testnet.monadvision.com/tx/${transactionHash}`)}>
-            <Text selectable style={[styles.reference, { color: colors.primary }]}>Transaction · {transactionHash} · View on MonadVision</Text>
-          </Pressable>
+          <View style={styles.transactionRef}>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>TRANSACTION HASH</Text>
+            <Text selectable style={[styles.hash, { color: colors.foreground }]}>{transactionHash}</Text>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel="View confirmed transaction on MonadVision"
+              onPress={() => void Linking.openURL(explorerUrl)}
+              style={({ pressed }) => [styles.explorerLink, { opacity: pressed ? 0.65 : 1 }]}
+            >
+              <Text style={[styles.explorerText, { color: colors.primary }]}>View on MonadVision</Text>
+              <Feather name="external-link" size={13} color={colors.primary} />
+            </Pressable>
+          </View>
         ) : null}
       </Card>
 
       <InlineNotice icon="shield">
         {settledThroughAgora
-          ? 'CTK is a testnet mock payout token, not a real-world currency. Receipt saved to local activity.'
-          : 'Testnet transaction only. The receipt is also saved to local activity.'}
+          ? 'CTK is a testnet mock payout token. This confirms the on-chain swap only; it is not a fiat payout. Receipt saved to Activity on this device.'
+          : 'Testnet transaction only. Receipt saved to Activity on this device.'}
       </InlineNotice>
       <PrimaryButton
         label="Back to wallet"
@@ -88,17 +104,25 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 19,
-    backgroundColor: '#ff5900',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
   },
+  confirmedBadge: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 7, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  confirmedDot: { width: 7, height: 7, borderRadius: 4 },
+  confirmedText: { fontSize: 9, letterSpacing: 0.65, fontFamily: 'Inter_700Bold' },
   subtitle: { fontSize: 13, lineHeight: 20, fontFamily: 'Inter_400Regular' },
-  receipt: { gap: 9 },
+  receipt: { gap: 9, padding: 16 },
   amount: { fontSize: 22, fontFamily: 'Inter_600SemiBold' },
-  to: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  fieldLabel: { fontSize: 9, letterSpacing: 0.75, fontFamily: 'Inter_600SemiBold' },
+  to: { fontSize: 11, lineHeight: 17, fontFamily: 'Inter_500Medium' },
+  receiptDivider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
   receivePanel: { borderRadius: 12, padding: 12, marginTop: 2, gap: 5 },
   receivesLabel: { fontSize: 9, letterSpacing: 0.8, fontFamily: 'Inter_600SemiBold' },
   receivesValue: { fontSize: 17, fontFamily: 'Inter_600SemiBold' },
-  reference: { fontSize: 9, fontFamily: 'Inter_400Regular' },
+  reference: { fontSize: 9, lineHeight: 14, fontFamily: 'Inter_400Regular' },
+  transactionRef: { gap: 5, marginTop: 2 },
+  hash: { fontSize: 9, lineHeight: 14, fontFamily: 'Inter_500Medium' },
+  explorerLink: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 3 },
+  explorerText: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
 });

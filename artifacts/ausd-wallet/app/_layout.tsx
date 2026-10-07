@@ -32,8 +32,9 @@ function RootLayoutNav() {
   }, [ready, profile, authenticated, segments]);
 
   return (
-    <Stack screenOptions={{ headerBackTitle: 'Back' }}>
+    <Stack screenOptions={{ headerBackTitle: 'Back', headerShown: false }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="create-account" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="review" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="success" options={{ headerShown: false, animation: 'fade_from_bottom' }} />
