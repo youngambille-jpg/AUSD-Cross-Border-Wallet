@@ -1,0 +1,37 @@
+workflows:
+  ausd-wallet-android:
+    name: AUSD Wallet Android APK
+    max_build_duration: 120
+    instance_type: linux_x2
+    environment:
+      groups:
+        - ausd_wallet
+      vars:
+        AUSD_ANDROID_PACKAGE: com.ausd.wallet
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+    scripts:
+      - name: Set up pnpm
+        script: |
+          corepack enable
+          corepack prepare pnpm@10.26.1 --activate
+      - name: Install workspace dependencies
+        script: pnpm install --frozen-lockfile
+      - name: Generate Android project with Expo
+        script: |
+          cd "$CM_BUILD_DIR/artifacts/ausd-wallet"
+          pnpm exec expo prebuild --platform android --no-install --non-interactive
+      - name: Set Android SDK location
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/artifacts/ausd-wallet/android/local.properties"
+      - name: Build installable debug APK
+        script: |
+          cd "$CM_BUILD_DIR/artifacts/ausd-wallet/android"
+          ./gradlew assembleDebug
+    artifacts:
+      - artifacts/ausd-wallet/android/app/build/outputs/apk/debug/*.apk
