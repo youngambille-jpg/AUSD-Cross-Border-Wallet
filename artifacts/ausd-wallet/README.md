@@ -1,6 +1,6 @@
 # AUSD Wallet
 
-Expo mobile wallet experience with Mera passkey onboarding and sponsored ERC-20 AUSD transfers on Monad testnet.
+Expo mobile wallet prototype for AUSD payments. New users move through a three-screen swipe introduction, then create a Mera passkey account. Mera authenticates wallet actions, direct AUSD transfers and Agora Instant Settlement swaps can submit sponsored transactions on Monad testnet, and CTK is used as a mock payout token. No fiat payment, card charge, or cross-chain transfer is submitted.
 
 ## Passkey setup
 
@@ -17,13 +17,19 @@ The Expo config adds iOS Associated Domains and the Android verified web link wh
 
 Mera credential IDs and transports are stored locally so the user can authenticate again. The PRF output is converted into the standard EVM BIP-44 account key at `m/44'/60'/0'/0/0`; the PRF output, derived key, seed, and signing session are cleared after deriving the address and are not persisted.
 
-## Monad testnet sends
+## Monad testnet transfers and settlement
 
-The Mera PRF derives a standard EVM BIP-44 owner. A Kernel v0.3.1 smart account (EntryPoint v0.7) is derived from that signer; the smart account address is the wallet address to fund with testnet AUSD. On confirm, the app requests the PRF again, builds a Pimlico sponsored UserOperation that calls AUSD `transfer`, waits for the Monad receipt, and stores the confirmed transaction hash locally. The dashboard reads AUSD `balanceOf` from the testnet token contract. Demo balances remain local and cannot send.
+The Mera PRF derives a standard EVM BIP-44 owner and a Kernel v0.3.1 smart account (EntryPoint v0.7). Direct sends authenticate with Mera and submit an AUSD transfer through a sponsored UserOperation. Agora settlement re-reads its AUSD→CTK quote, checks it has not changed, then submits the approved testnet settlement flow through a sponsored UserOperation. CTK is a test token, not a fiat payout. These actions can move test tokens on Monad testnet; do not use mainnet funds.
 
-Set `EXPO_PUBLIC_PIMLICO_BUNDLER_URL` to a Pimlico Monad testnet URL before starting Metro or making an EAS build. `EXPO_PUBLIC_PIMLICO_POLICY_ID` is optional when the key already has a default sponsorship policy. Pimlico sponsorship must be enabled for Monad testnet and must allow the AUSD token transfer. The `EXPO_PUBLIC_*` endpoint is embedded in the app bundle; use a dedicated testnet API key with spend limits. Keep `.env.local` out of version control and set the same variable in the EAS development environment for cloud builds.
+Set `EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL` to an Alchemy Monad testnet RPC URL to route balance and Agora quote reads through Alchemy. The app falls back to Monad's public testnet RPC when this variable is absent. `EXPO_PUBLIC_*` values are embedded in the app bundle; use a dedicated testnet key with appropriate limits and keep local environment files out of version control.
 
-Agora’s public metrics API remains on the profile screen. This send transfers AUSD on Monad testnet; it does not perform a fiat payout, cross-chain bridge, FX conversion, or AUSD→CTK swap.
+Agora's unauthenticated public metrics endpoint appears on Profile. Authenticated Agora API routes are not called. Add and Cash out tabs describe a planned Alchemy Pay connection; they do not launch checkout or submit a payout. Card issuing and cross-chain transfers are not enabled. Agora's testnet swap is enabled through the existing send/review flow.
+
+## Android development APK on Codemagic
+
+The repository-root `codemagic.yaml` generates the Android native project with Expo prebuild, builds `assembleDebug`, and archives `artifacts/ausd-wallet/android/app/build/outputs/apk/debug/*.apk`. The workflow installs the pnpm workspace lockfile and runs on pushes to `main`.
+
+Configure a Codemagic variable group named `ausd_wallet`. Add `EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL` for Alchemy-backed testnet reads. For passkey use in the installed app, also configure `EXPO_PUBLIC_RP_ID` and the Android package/signing-certificate association values used by the app's `/.well-known/assetlinks.json` endpoint. Download the APK from the Codemagic build artifacts. The existing workflow triggers on pushes to `main`; use Codemagic's manual start action to build another branch.
 
 ## Commands
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
-import { BrandHeader, Eyebrow, Page, Title } from '@/components/Primitives';
+import { BrandHeader, Eyebrow, InlineNotice, Page, Title } from '@/components/Primitives';
 
 const methods = [
   { icon: 'briefcase' as const, title: 'Bank account', detail: 'Withdraw to your local bank' },
@@ -26,7 +26,7 @@ export default function OfframpScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.balanceTitle, { color: colors.background }]}>Withdraw AUSD</Text>
-          <Text style={[styles.balanceDetail, { color: colors.border }]}>Select where to receive your money</Text>
+          <Text style={[styles.balanceDetail, { color: colors.border }]}>Alchemy Pay integration planned</Text>
         </View>
         <Text style={[styles.comingTag, { color: colors.border }]}>SOON</Text>
       </View>
@@ -43,12 +43,15 @@ export default function OfframpScreen() {
                 <Text style={[styles.methodTitle, { color: colors.foreground }]}>{method.title}</Text>
                 <Text style={[styles.methodDetail, { color: colors.mutedForeground }]}>{method.detail}</Text>
               </View>
-              <Text style={[styles.soon, { color: colors.mutedForeground }]}>Coming soon</Text>
+              <Text style={[styles.soon, { color: colors.mutedForeground }]}>Preview</Text>
             </View>
           </View>
         ))}
       </View>
-      <Text style={[styles.footnote, { color: colors.mutedForeground }]}>Cash-out providers and supported regions are being confirmed.</Text>
+      <InlineNotice icon="info">
+        Alchemy Pay is the planned cash-out provider. No payout is submitted in this preview. Availability, identity checks, fees, and delivery times depend on the supported region and payment method.
+      </InlineNotice>
+      <Text style={[styles.footnote, { color: colors.mutedForeground }]}>Choose a supported region before enabling cash out.</Text>
     </Page>
   );
 }

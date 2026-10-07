@@ -115,7 +115,7 @@ export default function WalletHome() {
                     {transfer.recipient}
                   </Text>
                   <Text style={[styles.activityMeta, { color: colors.mutedForeground }]}>
-                    {new Date(transfer.createdAt).toLocaleDateString()} · {transfer.transactionHash ? 'Monad testnet' : 'Simulated'}
+                    {new Date(transfer.createdAt).toLocaleDateString()} · {transfer.transactionHash ? 'Confirmed onchain' : 'Local preview'}
                   </Text>
                 </View>
                 <Text style={[styles.activityAmount, { color: colors.foreground }]}>
@@ -136,7 +136,7 @@ export default function WalletHome() {
       </Card>
 
       <InlineNotice icon="zap">
-        {isMeraWallet ? 'Real AUSD transfers are submitted on Monad testnet with Pimlico gas sponsorship.' : 'Demo wallet activity is local only. Create a Mera passkey wallet to send testnet AUSD.'}
+        {isMeraWallet ? 'Your Mera passkey protects the wallet. Direct AUSD transfers and Agora settlement use Monad testnet tokens and sponsored on-chain transactions.' : 'Demo wallet activity is local only. Create a Mera passkey wallet to use testnet transfers.'}
       </InlineNotice>
     </Page>
   );

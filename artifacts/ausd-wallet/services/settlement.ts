@@ -11,7 +11,7 @@ import {
 export const MONAD_TESTNET = {
   chainId: 10143,
   name: 'Monad Testnet',
-  rpcUrl: 'https://testnet-rpc.monad.xyz',
+  rpcUrl: process.env.EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL?.trim() || 'https://testnet-rpc.monad.xyz',
   factoryAddress: '0x8468587Af422ad440F58a57E955eCA6A970b5375' as Address,
   explorerUrl:
     'https://testnet.monadvision.com/address/0x8468587Af422ad440F58a57E955eCA6A970b5375?tab=Contract',

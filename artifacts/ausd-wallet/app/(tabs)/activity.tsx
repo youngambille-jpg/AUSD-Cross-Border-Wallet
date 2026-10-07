@@ -17,7 +17,7 @@ export default function ActivityScreen() {
       <Eyebrow>Wallet</Eyebrow>
       <Title>Activity</Title>
       <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-        Confirmed Monad testnet sends and local demo entries.
+        Direct AUSD transfers, Agora settlement transactions, and local preview entries.
       </Text>
       {transfers.length ? (
         <Card style={styles.list}>
@@ -36,7 +36,7 @@ export default function ActivityScreen() {
                       day: 'numeric',
                       hour: 'numeric',
                       minute: '2-digit',
-                    })} · {transfer.currency} · {transfer.transactionHash ? 'CONFIRMED · GAS SPONSORED' : 'SIMULATED'}
+                    })} · {transfer.currency} · {transfer.transactionHash ? 'CONFIRMED ONCHAIN' : 'LOCAL PREVIEW'}
                   </Text>
                   {transfer.transactionHash ? (
                     <Pressable onPress={() => void Linking.openURL(`https://testnet.monadvision.com/tx/${transfer.transactionHash}`)}>
@@ -58,12 +58,12 @@ export default function ActivityScreen() {
           </View>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No activity yet</Text>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Your confirmed testnet sends will be listed here after you send AUSD.
+            Confirmed Monad testnet transactions and local preview entries will appear here.
           </Text>
         </Card>
       )}
       <InlineNotice icon="shield">
-        Receipt details are stored on this device. Confirmed transactions are independently verifiable on MonadVision.
+        Confirmed testnet transactions link to MonadVision. Entries without a transaction link are local previews stored on this device.
       </InlineNotice>
     </Page>
   );

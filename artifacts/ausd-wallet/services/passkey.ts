@@ -46,10 +46,10 @@ export const MONAD_CHAIN = defineChain({
   id: 10143,
   name: 'Monad Testnet',
   nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
-  rpcUrls: { default: { http: ['https://testnet-rpc.monad.xyz'] } },
+  rpcUrls: { default: { http: [MONAD_TESTNET.rpcUrl] } },
 });
 
-const publicClient = createPublicClient({ chain: MONAD_CHAIN, transport: http() });
+const publicClient = createPublicClient({ chain: MONAD_CHAIN, transport: http(MONAD_TESTNET.rpcUrl) });
 const entryPoint = { address: entryPoint07Address, version: '0.7' as const };
 const AUSD_ADDRESS = '0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC' as Address;
 const ausdAbi = [

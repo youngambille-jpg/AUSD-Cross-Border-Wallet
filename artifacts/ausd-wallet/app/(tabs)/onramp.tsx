@@ -2,7 +2,7 @@ import React from 'react';
 import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
-import { BrandHeader, Eyebrow, Page, Title } from '@/components/Primitives';
+import { BrandHeader, Eyebrow, InlineNotice, Page, Title } from '@/components/Primitives';
 
 const methods = [
   { icon: 'credit-card' as const, title: 'Debit or credit card', detail: 'Buy AUSD with a card' },
@@ -26,7 +26,7 @@ export default function OnrampScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.balanceTitle, { color: colors.background }]}>Buy AUSD</Text>
-          <Text style={[styles.balanceDetail, { color: colors.border }]}>Choose a payment method</Text>
+          <Text style={[styles.balanceDetail, { color: colors.border }]}>Alchemy Pay integration planned</Text>
         </View>
         <Text style={[styles.comingTag, { color: colors.border }]}>SOON</Text>
       </View>
@@ -43,12 +43,15 @@ export default function OnrampScreen() {
                 <Text style={[styles.methodTitle, { color: colors.foreground }]}>{method.title}</Text>
                 <Text style={[styles.methodDetail, { color: colors.mutedForeground }]}>{method.detail}</Text>
               </View>
-              <Text style={[styles.soon, { color: colors.mutedForeground }]}>Coming soon</Text>
+              <Text style={[styles.soon, { color: colors.mutedForeground }]}>Preview</Text>
             </View>
           </View>
         ))}
       </View>
-      <Text style={[styles.footnote, { color: colors.mutedForeground }]}>Payment providers are being connected.</Text>
+      <InlineNotice icon="info">
+        Alchemy Pay is the planned fiat provider. This preview does not open checkout or accept a payment; supported regions, currencies, and fees will be shown before the provider is connected.
+      </InlineNotice>
+      <Text style={[styles.footnote, { color: colors.mutedForeground }]}>No payment has been initiated.</Text>
     </Page>
   );
 }

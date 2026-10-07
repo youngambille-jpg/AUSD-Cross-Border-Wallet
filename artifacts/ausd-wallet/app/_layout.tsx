@@ -14,7 +14,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { router, Stack, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { WalletProvider } from '@/state/wallet-context';
+import { WalletProvider, useWallet } from '@/state/wallet-context';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();

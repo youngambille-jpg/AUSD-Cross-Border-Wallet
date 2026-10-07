@@ -118,6 +118,7 @@ export default function ProfileScreen() {
         <Text selectable style={[styles.address, { color: colors.foreground }]}>
           {MONAD_TESTNET.factoryAddress}
         </Text>
+        <Text style={[styles.metricCaption, { color: colors.mutedForeground }]}>Settlement quote reads · {MONAD_TESTNET.rpcUrl.includes('alchemy') ? 'Alchemy Monad RPC' : 'Monad public RPC'}</Text>
         <Pressable
           onPress={() => void Linking.openURL(MONAD_TESTNET.explorerUrl)}
           style={({ pressed }) => [styles.explorerLink, { opacity: pressed ? 0.6 : 1 }]}
@@ -140,7 +141,7 @@ export default function ProfileScreen() {
       ) : null}
 
       <InlineNotice icon="info" tone="warning">
-        Sends submit an ERC-20 AUSD transfer from the Kernel account through Pimlico on Monad testnet. The account must hold testnet AUSD and Pimlico must approve the sponsorship request.
+        Direct AUSD transfers and Agora swaps can submit sponsored transactions using test tokens on Monad testnet. Fiat onramp and offramp, card issuing, and cross-chain transfers are not connected yet.
       </InlineNotice>
 
       <PrimaryButton
