@@ -25,15 +25,15 @@ Set `EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL` to an Alchemy Monad testnet RPC URL to r
 
 Agora's unauthenticated public metrics endpoint appears on Profile. Authenticated Agora API routes are not called. Add and Cash out tabs describe a planned Alchemy Pay connection; they do not launch checkout or submit a payout. Card issuing and cross-chain transfers are not enabled. Agora's testnet swap is enabled through the existing send/review flow.
 
-## Android development APK on Codemagic
+## Android demo APK on Codemagic
 
-The repository-root `codemagic.yaml` generates the Android native project with Expo prebuild, builds `assembleDebug`, and archives `artifacts/ausd-wallet/android/app/build/outputs/apk/debug/*.apk`. The workflow installs the pnpm workspace lockfile and runs on pushes to `main`.
+The repository-root `codemagic.yaml` generates the Android native project with Expo prebuild, builds the bundled `assembleRelease` app, and archives `artifacts/ausd-wallet/android/app/build/outputs/apk/release/*.apk`. The workflow installs the pnpm workspace lockfile and runs on pushes to `main`.
 
 Configure a Codemagic variable group named `ausd_wallet`. Add `EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL` for Alchemy-backed testnet reads. For passkey use in the installed app, also configure `EXPO_PUBLIC_RP_ID` and the Android package/signing-certificate association values used by the app's `/.well-known/assetlinks.json` endpoint. Download the APK from the Codemagic build artifacts. The existing workflow triggers on pushes to `main`; use Codemagic's manual start action to build another branch.
 
 ## Android APK on GitHub Actions
 
-The `.github/workflows/build-android-apk.yml` workflow builds an installable debug APK on every push and can also be started from the repository's **Actions** tab with **Run workflow**. After a successful run, download `ausd-wallet-android-debug-<commit>` from that run's artifacts. Artifacts are retained for 14 days.
+The `.github/workflows/build-android-apk.yml` workflow builds the bundled app APK on every push and can also be started from the repository's **Actions** tab with **Run workflow**. After a successful run, download `ausd-wallet-android-<commit>` from that run's artifacts. Artifacts are retained for 14 days. This is a release-variant APK for demo installation, not a Play Store-signed production release.
 
 To produce an APK configured for the live testnet demo, add these repository or environment **Actions secrets**: `EXPO_PUBLIC_RP_ID`, `EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL`, and `EXPO_PUBLIC_PIMLICO_BUNDLER_URL`. Add `EXPO_PUBLIC_PIMLICO_POLICY_ID` if the Pimlico URL does not select the sponsorship policy. These `EXPO_PUBLIC_*` values are compiled into the APK; use restricted testnet credentials. `AUSD_ANDROID_PACKAGE` can be set as a repository Actions variable; it defaults to `com.ausd.wallet`. Passkey authentication also requires the matching Android asset links file to be published for the RP domain and signing certificate.
 

@@ -32,9 +32,9 @@ workflows:
       - name: Set Android SDK location
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/artifacts/ausd-wallet/android/local.properties"
-      - name: Build installable debug APK
+      - name: Build bundled release APK
         script: |
           cd "$CM_BUILD_DIR/artifacts/ausd-wallet/android"
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
     artifacts:
-      - artifacts/ausd-wallet/android/app/build/outputs/apk/debug/*.apk
+      - artifacts/ausd-wallet/android/app/build/outputs/apk/release/*.apk
