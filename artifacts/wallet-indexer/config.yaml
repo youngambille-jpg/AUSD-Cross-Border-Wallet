@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: ausd-wallet-activity
+description: AUSD and CTK token transfers on Monad testnet
+contracts:
+  - name: WalletToken
+    events:
+      - event: "Transfer(address indexed from, address indexed to, uint256 value)"
+chains:
+  - id: 10143
+    start_block: latest
+    rpc:
+      - url: https://testnet-rpc.monad.xyz
+    contracts:
+      - name: WalletToken
+        address:
+          - "0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC"
+          - "0x7BEb5D9DB0d85cBEa543C04f0dE8c23c2176cd9D"

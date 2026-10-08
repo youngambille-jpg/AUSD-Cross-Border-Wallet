@@ -1,0 +1,10 @@
+type TokenTransfer {
+  id: ID!
+  token: String! @index
+  from: String! @index
+  to: String! @index
+  value: BigInt!
+  transactionHash: String!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}

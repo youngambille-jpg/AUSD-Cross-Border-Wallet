@@ -35,7 +35,7 @@ Configure a Codemagic variable group named `ausd_wallet`. Add `EXPO_PUBLIC_ALCHE
 
 The `.github/workflows/build-android-apk.yml` workflow builds the bundled app APK on every push and can also be started from the repository's **Actions** tab with **Run workflow**. After a successful run, download `ausd-wallet-android-<commit>` from that run's artifacts. Artifacts are retained for 14 days. This is a release-variant APK for demo installation, not a Play Store-signed production release.
 
-To produce an APK configured for the live testnet demo, add these repository or environment **Actions secrets**: `EXPO_PUBLIC_RP_ID`, `EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL`, and `EXPO_PUBLIC_PIMLICO_BUNDLER_URL`. Add `EXPO_PUBLIC_PIMLICO_POLICY_ID` if the Pimlico URL does not select the sponsorship policy. These `EXPO_PUBLIC_*` values are compiled into the APK; use restricted testnet credentials. `AUSD_ANDROID_PACKAGE` can be set as a repository Actions variable; it defaults to `com.ausd.wallet`. Passkey authentication also requires the matching Android asset links file to be published for the RP domain and signing certificate.
+To produce an APK configured for the live testnet demo, add repository **Actions secrets** in **Settings → Secrets and variables → Actions**: `EXPO_PUBLIC_RP_ID` and `EXPO_PUBLIC_PIMLICO_BUNDLER_URL` are required by the build workflow. `EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL` is optional; without it the app uses Monad public testnet RPC. Add `EXPO_PUBLIC_PIMLICO_POLICY_ID` if the Pimlico URL does not select the sponsorship policy. The `EXPO_PUBLIC_*` values are compiled into the APK; use restricted testnet credentials. `AUSD_ANDROID_PACKAGE` can be set as a repository Actions variable; it defaults to `com.ausd.wallet`. Passkey authentication also requires the matching Android asset links file to be published for the RP domain and signing certificate.
 
 ## Commands
 
@@ -53,3 +53,9 @@ Expo Go cannot load Mera’s native passkey module. Build and install the Androi
 3. Install that APK on an Android 9+ device, then run `pnpm --filter @workspace/ausd-wallet run dev:client` and open the app.
 
 The current Expo Go preview remains useful for the UI, but passkey creation and authentication only work in the native development build (or supported web browser).
+
+## Payment requests and indexed activity
+
+Receive creates an AUSD payment-request QR code and share link. Send can scan the request and prefill its recipient and optional amount for review; the sender must still approve with their passkey. Camera permission is requested only when scanning.
+
+The Envio indexer is in `artifacts/wallet-indexer`. Deploy it with Envio Cloud, then set its public GraphQL URL as the GitHub Actions repository variable `EXPO_PUBLIC_ENVIO_GRAPHQL_URL`. Set the same variable in the local wallet environment to use indexed activity during development. It indexes Monad testnet AUSD and CTK `Transfer` events starting from the configured latest block. If the URL is missing or unavailable, the activity screen falls back to transfers saved on the device.

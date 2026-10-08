@@ -1,26 +1,88 @@
 import React from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
 import { Card, Eyebrow, InlineNotice, Page, Title } from '@/components/Primitives';
+import { formatIndexedTransfer, useIndexedActivity } from '@/services/indexed-activity';
 
 const amountText = (amount: number) =>
   amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 
 export default function ActivityScreen() {
   const colors = useColors();
-  const { transfers } = useWallet();
+  const { profile, transfers: localTransfers } = useWallet();
+  const { transfers: indexedTransfers, loading, error, configured } = useIndexedActivity(profile?.address);
+  const useIndexed = configured && !error;
+  const indexedHashes = new Set(indexedTransfers.map((item) => item.transactionHash.toLowerCase()));
+  const transfers = useIndexed
+    ? [
+        ...indexedTransfers.map((item) => ({ indexed: formatIndexedTransfer(item, profile?.address ?? '') })),
+        ...localTransfers
+          .filter((item) => !item.transactionHash || !indexedHashes.has(item.transactionHash.toLowerCase()))
+          .map((item) => ({ local: item })),
+      ].sort((left, right) => {
+        const leftDate = 'indexed' in left ? left.indexed.createdAt : left.local.createdAt;
+        const rightDate = 'indexed' in right ? right.indexed.createdAt : right.local.createdAt;
+        return new Date(rightDate).getTime() - new Date(leftDate).getTime();
+      })
+    : localTransfers.map((item) => ({ local: item }));
   return (
     <Page contentStyle={styles.page}>
       <Eyebrow>PAYMENTS</Eyebrow>
       <Title>Activity</Title>
       <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-        Your AUSD transfers and Agora settlement receipts.
+        Confirmed AUSD and settlement-token movements on Monad testnet.
       </Text>
+      <View style={[styles.sourceBanner, { backgroundColor: colors.secondary }]}>
+        {loading ? <ActivityIndicator size="small" color={colors.foreground} /> : <View style={[styles.sourceDot, { backgroundColor: useIndexed ? colors.primary : colors.mutedForeground }]} />}
+        <Text style={[styles.sourceText, { color: colors.mutedForeground }]}>
+          {loading ? 'Syncing on-chain activity' : useIndexed ? 'Live activity · Envio indexer' : error ? 'Showing saved activity · indexer unavailable' : 'Saved on this device'}
+        </Text>
+      </View>
       {transfers.length ? (
         <View style={styles.list}>
-          {transfers.map((transfer) => {
+          {transfers.map((entry) => {
+            if ('indexed' in entry) {
+              const transfer = entry.indexed;
+              const date = new Date(transfer.createdAt);
+              const dateLabel = Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleString([], {
+                month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+              });
+              return (
+                <Card key={transfer.id} style={styles.transferCard}>
+                  <View style={styles.cardTop}>
+                    <View style={styles.transferType}>
+                      <View style={[styles.icon, { backgroundColor: colors.secondary }]}>
+                        <Feather name={transfer.outgoing ? 'arrow-up-right' : 'arrow-down-left'} size={16} color={colors.foreground} />
+                      </View>
+                      <View style={styles.typeCopy}>
+                        <Text style={[styles.name, { color: colors.foreground }]}>{transfer.outgoing ? `${transfer.token} sent` : `${transfer.token} received`}</Text>
+                        <Text style={[styles.meta, { color: colors.mutedForeground }]}>{dateLabel} · confirmed on-chain</Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.indexedAmount, { color: colors.foreground }]}>{transfer.outgoing ? '−' : '+'}{amountText(transfer.amount)} {transfer.token}</Text>
+                  </View>
+                  <View style={styles.recipientBlock}>
+                    <Text style={[styles.amountLabel, { color: colors.mutedForeground }]}>{transfer.outgoing ? 'TO' : 'FROM'}</Text>
+                    <Text selectable style={[styles.recipient, { color: colors.foreground }]}>{transfer.counterparty}</Text>
+                  </View>
+                  <View style={styles.transactionRef}>
+                    <Text selectable style={[styles.hash, { color: colors.mutedForeground }]}>{transfer.transactionHash}</Text>
+                    <Pressable
+                      accessibilityRole="link"
+                      accessibilityLabel="View confirmed transaction on MonadVision"
+                      onPress={() => void Linking.openURL(`https://testnet.monadvision.com/tx/${transfer.transactionHash}`)}
+                      style={({ pressed }) => [styles.explorerLink, { opacity: pressed ? 0.65 : 1 }]}
+                    >
+                      <Text style={[styles.explorerText, { color: colors.primary }]}>View on MonadVision</Text>
+                      <Feather name="external-link" size={13} color={colors.primary} />
+                    </Pressable>
+                  </View>
+                </Card>
+              );
+            }
+            const transfer = entry.local;
             const confirmed = Boolean(transfer.transactionHash);
             const settlement = transfer.settlementKind === 'agora-instant-settlement';
             const receivedAmount = transfer.receivedAmount ?? transfer.amount;
@@ -92,12 +154,12 @@ export default function ActivityScreen() {
           </View>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No activity yet</Text>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Completed AUSD transfers and Agora settlement receipts will appear here.
+            Confirmed token movements and saved transfers will appear here.
           </Text>
         </Card>
       )}
       <InlineNotice icon="shield">
-        Confirmed entries link to MonadVision. Local previews are saved on this device and are not on-chain transactions.
+        {useIndexed ? 'Confirmed token movements are read from Monad testnet logs indexed by Envio. Saved items outside the indexer history remain visible; local previews are not on-chain transactions.' : 'Saved entries come from this device. Local previews are not on-chain transactions.'}
       </InlineNotice>
     </Page>
   );
@@ -107,6 +169,9 @@ const styles = StyleSheet.create({
   page: { gap: 13, paddingTop: 10 },
   intro: { fontSize: 13, lineHeight: 19, fontFamily: 'Inter_400Regular', marginBottom: 3 },
   list: { gap: 12 },
+  sourceBanner: { minHeight: 36, borderRadius: 10, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sourceDot: { width: 7, height: 7, borderRadius: 4 },
+  sourceText: { fontSize: 10, fontFamily: 'Inter_500Medium' },
   transferCard: { gap: 13, padding: 15 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   transferType: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -123,6 +188,7 @@ const styles = StyleSheet.create({
   amountLabel: { fontSize: 9, letterSpacing: 0.55, fontFamily: 'Inter_600SemiBold' },
   sentAmount: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   receivedAmount: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  indexedAmount: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   recipientBlock: { gap: 4 },
   recipient: { fontSize: 10, lineHeight: 15, fontFamily: 'Inter_500Medium' },
   transactionRef: { gap: 3 },

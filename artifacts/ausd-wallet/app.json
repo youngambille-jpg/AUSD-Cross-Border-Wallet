@@ -21,7 +21,13 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow AUSD Wallet to scan payment requests."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

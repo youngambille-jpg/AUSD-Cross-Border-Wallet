@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { isAddress } from 'viem';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
@@ -22,6 +22,7 @@ const formatAmount = (amount: number, digits = 2) =>
 export default function SendScreen() {
   const colors = useColors();
   const { profile, balance } = useWallet();
+  const params = useLocalSearchParams<{ recipient?: string; amount?: string }>();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -29,6 +30,11 @@ export default function SendScreen() {
   const [balanceError, setBalanceError] = useState('');
   const parsedAmount = Number(amount);
   const displayedBalance = profile?.mode === 'mera' ? Number(onchainBalance ?? 0) : balance;
+
+  useEffect(() => {
+    if (typeof params.recipient === 'string') setRecipient(params.recipient);
+    if (typeof params.amount === 'string') setAmount(params.amount);
+  }, [params.recipient, params.amount]);
 
   useEffect(() => {
     if (profile?.mode !== 'mera' || !profile.address) return;
@@ -61,6 +67,13 @@ export default function SendScreen() {
         <Title>Who are you sending to?</Title>
         <Body>Send AUSD directly to a wallet on Monad testnet. Pimlico sponsorship is requested when you confirm.</Body>
       </View>
+
+      <PrimaryButton
+        label="Scan a payment request"
+        icon="maximize"
+        onPress={() => router.push('/scan')}
+        secondary
+      />
 
       <Field
         label="Recipient wallet address"

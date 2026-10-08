@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
 import { getAUSDBalance } from '@/services/passkey';
+import { formatIndexedTransfer, useIndexedActivity } from '@/services/indexed-activity';
 import {
   Body,
   BrandHeader,
@@ -21,6 +22,7 @@ const money = (amount: number) =>
 export default function WalletHome() {
   const colors = useColors();
   const { profile, balance, transfers } = useWallet();
+  const { transfers: indexedTransfers, error: activityError, configured } = useIndexedActivity(profile?.address);
   const [chainBalance, setChainBalance] = useState<string | null>(null);
   const [chainBalanceError, setChainBalanceError] = useState('');
   const isMeraWallet = profile?.mode === 'mera';
@@ -33,7 +35,19 @@ export default function WalletHome() {
       .catch(() => { if (active) setChainBalanceError('Balance unavailable'); });
     return () => { active = false; };
   }, [isMeraWallet, profile?.address]);
-  const recent = transfers.slice(0, 3);
+  const indexedHashes = new Set(indexedTransfers.map((item) => item.transactionHash.toLowerCase()));
+  const recent = configured && !activityError
+    ? [
+        ...indexedTransfers.map((item) => ({ indexed: formatIndexedTransfer(item, profile?.address ?? '') })),
+        ...transfers
+          .filter((item) => !item.transactionHash || !indexedHashes.has(item.transactionHash.toLowerCase()))
+          .map((item) => ({ local: item })),
+      ].sort((left, right) => {
+        const leftDate = 'indexed' in left ? left.indexed.createdAt : left.local.createdAt;
+        const rightDate = 'indexed' in right ? right.indexed.createdAt : right.local.createdAt;
+        return new Date(rightDate).getTime() - new Date(leftDate).getTime();
+      }).slice(0, 3)
+    : transfers.slice(0, 3).map((item) => ({ local: item }));
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
@@ -84,6 +98,11 @@ export default function WalletHome() {
           primary
         />
         <QuickAction
+          icon="maximize"
+          label="Receive"
+          onPress={() => router.push('/receive')}
+        />
+        <QuickAction
           icon="plus"
           label="Add"
           onPress={() => router.push('/(tabs)/onramp')}
@@ -103,27 +122,39 @@ export default function WalletHome() {
       </View>
       <Card style={styles.activityCard}>
         {recent.length ? (
-          recent.map((transfer, index) => (
-            <React.Fragment key={transfer.id}>
+          recent.map((entry, index) => {
+            const indexed = 'indexed' in entry ? entry.indexed : undefined;
+            const transfer = 'local' in entry ? entry.local : undefined;
+            const title = indexed
+              ? `${indexed.token} ${indexed.outgoing ? 'sent' : 'received'}`
+              : transfer?.recipient ?? 'Token movement';
+            const amount = indexed
+              ? `${indexed.outgoing ? '−' : '+'}${money(indexed.amount)} ${indexed.token}`
+              : `−${money(transfer?.amount ?? 0)} AUSD`;
+            const date = indexed ? indexed.createdAt : transfer?.createdAt;
+            const confirmed = indexed ? 'Confirmed on-chain' : transfer?.transactionHash ? 'Confirmed on-chain' : 'Saved on this device';
+            return (
+            <React.Fragment key={indexed?.id ?? transfer?.id ?? index}>
               {index > 0 ? <Divider /> : null}
               <View style={styles.activityRow}>
                 <View style={[styles.activityIcon, { backgroundColor: colors.secondary }]}>
-                  <Feather name="arrow-up-right" size={16} color={colors.foreground} />
+                  <Feather name={indexed && !indexed.outgoing ? 'arrow-down-left' : 'arrow-up-right'} size={16} color={colors.foreground} />
                 </View>
                 <View style={styles.activityInfo}>
                   <Text numberOfLines={1} style={[styles.activityName, { color: colors.foreground }]}>
-                    {transfer.recipient}
+                    {title}
                   </Text>
                   <Text style={[styles.activityMeta, { color: colors.mutedForeground }]}>
-                    {new Date(transfer.createdAt).toLocaleDateString()} · {transfer.transactionHash ? 'Confirmed onchain' : 'Local preview'}
+                    {date ? new Date(date).toLocaleDateString() : 'Date unavailable'} · {confirmed}
                   </Text>
                 </View>
                 <Text style={[styles.activityAmount, { color: colors.foreground }]}>
-                  −{money(transfer.amount)} AUSD
+                  {amount}
                 </Text>
               </View>
             </React.Fragment>
-          ))
+            );
+          })
         ) : (
           <View style={styles.emptyActivity}>
             <Feather name="clock" size={18} color={colors.mutedForeground} />
