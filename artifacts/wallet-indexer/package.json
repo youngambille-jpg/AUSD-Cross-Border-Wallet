@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "envio": "3.14.0"
+    "envio": "3.10.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
