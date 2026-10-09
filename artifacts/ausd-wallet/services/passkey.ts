@@ -52,12 +52,18 @@ export const MONAD_CHAIN = defineChain({
 const publicClient = createPublicClient({ chain: MONAD_CHAIN, transport: http(MONAD_TESTNET.rpcUrl) });
 const entryPoint = { address: entryPoint07Address, version: '0.7' as const };
 const AUSD_ADDRESS = '0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC' as Address;
+// Circle's native USDC deployment on Monad testnet.
+const USDC_ADDRESS = '0x534b2f3A21130d7a60830c2Df862319e593943A3' as Address;
 const ausdAbi = [
   { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'allowance', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'approve', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
   { type: 'function', name: 'transfer', stateMutability: 'nonpayable', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
+] as const;
+const balanceAbi = [
+  { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
+  { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
 
 export function getPasskeyErrorMessage(error: unknown) {
@@ -70,15 +76,63 @@ export function getPasskeyErrorMessage(error: unknown) {
     .toLowerCase();
 
   if (shaped.code === 'PRF_UNAVAILABLE') {
-    return 'This passkey provider does not support the secure account feature Mera needs. Try a device passkey or another authenticator.';
+    return 'The passkey was created, but this authenticator did not provide Mera’s secure account key. Try a device passkey provider that supports WebAuthn PRF, such as Google Password Manager or iCloud Keychain.';
   }
   if (shaped.code === 'CRYPTO_UNAVAILABLE') {
     return 'Secure cryptography is unavailable in this app runtime. Update the app and try again.';
+  }
+  if (shaped.code === 'PASSKEY_OPERATION_FAILED') {
+    return 'The passkey ceremony could not finish. Check that the app’s RP domain has the matching Android assetlinks.json or iOS apple-app-site-association file, then retry.';
   }
   if (causeText.includes('cancel')) {
     return 'Passkey prompt cancelled. You can try again when you’re ready.';
   }
   return error.message || 'Passkey authentication did not complete. Please try again.';
+}
+
+async function assertNativeRpAssociation(rpId: string) {
+  if (Platform.OS === 'web') return;
+  const isAndroid = Platform.OS === 'android';
+  const associationPath = isAndroid
+    ? '/.well-known/assetlinks.json'
+    : '/.well-known/apple-app-site-association';
+  let response: Response;
+  try {
+    response = await fetch(`https://${rpId}${associationPath}`, { redirect: 'manual' });
+  } catch {
+    throw new Error(`Could not reach https://${rpId}${associationPath}. Publish the native passkey association file on the RP domain, then retry.`);
+  }
+  if (!response.ok || response.redirected) {
+    throw new Error(`The passkey association file at https://${rpId}${associationPath} must return JSON directly with HTTP 200. Check the RP domain’s association configuration.`);
+  }
+
+  let association: unknown;
+  try {
+    association = await response.json();
+  } catch {
+    throw new Error(`The passkey association file at https://${rpId}${associationPath} did not return valid JSON.`);
+  }
+
+  if (isAndroid) {
+    const packageName = Constants.expoConfig?.android?.package ?? 'com.ausd.wallet';
+    const entries = Array.isArray(association) ? association : [];
+    const appIsAssociated = entries.some((entry) => {
+      if (!entry || typeof entry !== 'object') return false;
+      const target = (entry as { target?: { namespace?: string; package_name?: string } }).target;
+      return target?.namespace === 'android_app' && target.package_name === packageName;
+    });
+    if (!appIsAssociated) {
+      throw new Error(`Android passkeys are not associated with ${packageName}. Add the installed APK’s signing-certificate SHA-256 fingerprint to the RP domain’s assetlinks.json, then rebuild and retry.`);
+    }
+    return;
+  }
+
+  const iosBundleId = Constants.expoConfig?.ios?.bundleIdentifier;
+  const webcredentials = (association as { webcredentials?: { apps?: unknown } } | null)?.webcredentials;
+  const apps = Array.isArray(webcredentials?.apps) ? webcredentials.apps : [];
+  if (iosBundleId && !apps.some((app) => typeof app === 'string' && app.endsWith(`.${iosBundleId}`))) {
+    throw new Error(`iOS passkeys are not associated with ${iosBundleId}. Add the Apple team and bundle ID to the RP domain’s apple-app-site-association file, then rebuild and retry.`);
+  }
 }
 
 function getRelyingPartyId() {
@@ -163,6 +217,7 @@ export async function createMeraPasskey(name: string, email: string): Promise<Me
       'Passkey setup needs a verified HTTPS domain. Configure EXPO_PUBLIC_RP_ID and publish the iOS and Android domain association files for that domain.',
     );
   }
+  await assertNativeRpAssociation(rpId);
 
   const mera = await import('@category-labs/mera');
   const webAuthnClient = await getNativeWebAuthnClient();
@@ -226,6 +281,16 @@ export async function getAUSDBalance(account: string) {
     publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'balanceOf', args: [account as Address] }),
   ]);
   if (decimals !== 6) throw new Error(`Monad AUSD reports ${decimals} decimals; expected 6.`);
+  return formatUnits(rawBalance, decimals);
+}
+
+export async function getUSDCBalance(account: string) {
+  if (!isAddress(account, { strict: false })) throw new Error('Invalid Monad wallet address.');
+  const [decimals, rawBalance] = await Promise.all([
+    publicClient.readContract({ address: USDC_ADDRESS, abi: balanceAbi, functionName: 'decimals' }),
+    publicClient.readContract({ address: USDC_ADDRESS, abi: balanceAbi, functionName: 'balanceOf', args: [account as Address] }),
+  ]);
+  if (decimals !== 6) throw new Error(`Monad USDC reports ${decimals} decimals; expected 6.`);
   return formatUnits(rawBalance, decimals);
 }
 
