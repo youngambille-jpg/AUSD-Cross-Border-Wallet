@@ -245,6 +245,41 @@ export async function createMeraPasskey(name: string, email: string): Promise<Me
   }
 }
 
+/**
+ * Recover an account from any discoverable passkey synced to this RP.
+ * Omitting credential metadata lets the platform choose the user's existing
+ * passkey instead of requiring a profile from the previous device.
+ */
+export async function recoverMeraPasskey(): Promise<MeraAccount> {
+  await assertPlatformSupport();
+  const rpId = getRelyingPartyId();
+  if (!rpId) {
+    throw new Error(
+      'Account recovery needs the same verified HTTPS domain used when the passkey was created. Configure EXPO_PUBLIC_RP_ID and publish the native association files for that domain.',
+    );
+  }
+  await assertNativeRpAssociation(rpId);
+
+  const mera = await import('@category-labs/mera');
+  const webAuthnClient = await getNativeWebAuthnClient();
+  const recovered = await mera.getPasskeyPrfOutput({
+    rpId,
+    ...(webAuthnClient ? { webAuthnClient } : {}),
+  });
+  const signer = signerFromPrf(mera, recovered.prfOutput);
+  try {
+    const kernelAccount = await createKernelAccount(signer.owner);
+    return {
+      address: kernelAccount.address,
+      signerAddress: signer.owner.address,
+      rpId,
+      credential: { credentialId: recovered.credentialId },
+    };
+  } finally {
+    signer.session.end();
+  }
+}
+
 export async function getMeraViemSigner(account: MeraPasskeyProfile) {
   await assertPlatformSupport();
   const mera = await import('@category-labs/mera');

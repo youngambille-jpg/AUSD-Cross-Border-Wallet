@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
-import { createMeraPasskey, getPasskeyErrorMessage } from '@/services/passkey';
+import { createMeraPasskey, getPasskeyErrorMessage, recoverMeraPasskey } from '@/services/passkey';
 import { BrandHeader, Card, Eyebrow, Field, Page, PrimaryButton, Title } from '@/components/Primitives';
 
 export default function CreateAccountScreen() {
@@ -14,6 +14,7 @@ export default function CreateAccountScreen() {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [mode, setMode] = useState<'choice' | 'create' | 'recover'>('choice');
 
   React.useEffect(() => {
     if (ready && (profile || !introComplete)) router.replace('/');
@@ -53,16 +54,76 @@ export default function CreateAccountScreen() {
     }
   }
 
+  async function recoverAccount() {
+    setError('');
+    if (storageError) {
+      setError('Wallet storage needs attention before account recovery. Restart the app and try again.');
+      return;
+    }
+    if (displayName.trim().length < 2) {
+      setError('Enter a name with at least two characters.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError('Enter a valid email address.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const account = await recoverMeraPasskey();
+      await completeOnboarding({
+        address: account.address,
+        signerAddress: account.signerAddress,
+        displayName: displayName.trim(),
+        email: email.trim(),
+        mode: 'mera',
+        passkey: { credential: account.credential, rpId: account.rpId },
+      });
+      router.replace('/(tabs)');
+    } catch (caught) {
+      setError(getPasskeyErrorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!ready || profile || !introComplete) return <View style={[styles.loading, { backgroundColor: colors.background }]} />;
 
+  if (mode === 'choice') {
+    return (
+      <Page contentStyle={styles.page}>
+        <BrandHeader />
+        <View style={styles.heading}>
+          <View style={[styles.icon, { backgroundColor: colors.secondary }]}><Feather name="key" size={22} color={colors.primary} /></View>
+          <Eyebrow>YOUR MONAD WALLET</Eyebrow>
+          <Title>How would you like to begin?</Title>
+          <Text style={[styles.body, { color: colors.mutedForeground }]}>Create a new Mera passkey account, or recover an existing account from a passkey synced to this device.</Text>
+        </View>
+        <Card style={{ ...styles.securityCard, backgroundColor: colors.secondary }}>
+          <Feather name="shield" size={17} color={colors.primary} />
+          <Text style={[styles.securityText, { color: colors.mutedForeground }]}>Recovery must use the same RP domain and a passkey provider that supports WebAuthn PRF.</Text>
+        </Card>
+        {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
+        <View style={styles.actions}>
+          <PrimaryButton label="Create a new account" icon="user-plus" onPress={() => { setError(''); setMode('create'); }} />
+          <PrimaryButton label="Recover existing account" icon="refresh-cw" secondary onPress={() => { setError(''); setMode('recover'); }} />
+          <Text style={[styles.footnote, { color: colors.mutedForeground }]}>Requires the AUSD development build and a supported device. Testnet only.</Text>
+        </View>
+      </Page>
+    );
+  }
+
+  const isRecovery = mode === 'recover';
   return (
     <Page contentStyle={styles.page}>
+      <Text onPress={() => { setError(''); setMode('choice'); }} style={[styles.back, { color: colors.foreground }]}>← Back</Text>
       <BrandHeader />
       <View style={styles.heading}>
-        <View style={[styles.icon, { backgroundColor: colors.secondary }]}><Feather name="user-plus" size={22} color={colors.primary} /></View>
-        <Eyebrow>CREATE ACCOUNT</Eyebrow>
-        <Title>Let’s set up your wallet.</Title>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>Add your details, then create a passkey to protect your wallet.</Text>
+        <View style={[styles.icon, { backgroundColor: colors.secondary }]}><Feather name={isRecovery ? 'refresh-cw' : 'user-plus'} size={22} color={colors.primary} /></View>
+        <Eyebrow>{isRecovery ? 'RECOVER ACCOUNT' : 'CREATE ACCOUNT'}</Eyebrow>
+        <Title>{isRecovery ? 'Bring your wallet back.' : 'Let’s set up your wallet.'}</Title>
+        <Text style={[styles.body, { color: colors.mutedForeground }]}>{isRecovery ? 'Choose your synced Mera passkey, then add the name and email you want to use on this device.' : 'Add your details, then create a passkey to protect your wallet.'}</Text>
       </View>
       <View style={styles.fields}>
         <Field label="Your name" value={displayName} onChangeText={setDisplayName} placeholder="Name shown on your account" autoCapitalize="words" testID="name-input" />
@@ -74,7 +135,7 @@ export default function CreateAccountScreen() {
       </Card>
       {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
       <View style={styles.actions}>
-        <PrimaryButton label="Create passkey" icon="key" loading={busy} onPress={createAccount} testID="create-passkey" />
+        <PrimaryButton label={isRecovery ? 'Recover with passkey' : 'Create passkey'} icon="key" loading={busy} onPress={isRecovery ? recoverAccount : createAccount} testID={isRecovery ? 'recover-passkey' : 'create-passkey'} />
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>Requires the AUSD development build and a supported device. Testnet only.</Text>
       </View>
     </Page>
@@ -83,6 +144,7 @@ export default function CreateAccountScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1, justifyContent: 'space-between', gap: 20, paddingTop: 8, paddingBottom: 14 },
+  back: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
   loading: { flex: 1 },
   heading: { gap: 12 },
   icon: { width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },

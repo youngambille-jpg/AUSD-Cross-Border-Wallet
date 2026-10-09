@@ -10,9 +10,21 @@ import {
   createSavingsPocketId,
   createSponsoredSavingsPocket,
   depositToSavingsPocket,
+  giftToPersonSponsored,
+  giftToPocketSponsored,
   getSavingsPocket,
+  getUnallocatedGiftBalance,
+  withdrawGiftSponsored,
   type SavingsPocketState,
 } from '@/services/savings-pockets';
+import { loadContacts, type WalletContact } from '@/services/contacts';
+import {
+  createSharedPocketCode,
+  loadSharedPockets,
+  parseSharedPocketCode,
+  saveSharedPockets,
+  type SharedPocket,
+} from '@/services/shared-pockets';
 import { useWallet } from '@/state/wallet-context';
 
 const money = (amount: number) => amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -23,6 +35,7 @@ export default function SavingsGoalsScreen() {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [pocketStates, setPocketStates] = useState<Record<string, SavingsPocketState>>({});
+  const [sharedPocketStates, setSharedPocketStates] = useState<Record<string, SavingsPocketState>>({});
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
   const [contribution, setContribution] = useState('');
@@ -33,6 +46,14 @@ export default function SavingsGoalsScreen() {
   const [error, setError] = useState('');
   const [backupText, setBackupText] = useState('');
   const [showRestore, setShowRestore] = useState(false);
+  const [sharedPockets, setSharedPockets] = useState<SharedPocket[]>([]);
+  const [contacts, setContacts] = useState<WalletContact[]>([]);
+  const [giftBalance, setGiftBalance] = useState<string | null>(null);
+  const [giftAmount, setGiftAmount] = useState('');
+  const [giftRecipient, setGiftRecipient] = useState('');
+  const [giftPocket, setGiftPocket] = useState('');
+  const [pocketCode, setPocketCode] = useState('');
+  const [showImport, setShowImport] = useState(false);
   const account = profile?.mode === 'mera' && profile.address && profile.signerAddress && profile.passkey
     ? { address: profile.address, signerAddress: profile.signerAddress, credential: profile.passkey.credential, rpId: profile.passkey.rpId }
     : null;
@@ -56,18 +77,28 @@ export default function SavingsGoalsScreen() {
     setLoading(true);
     setError('');
     try {
-      const [savedGoals, walletBalance] = await Promise.all([
+      const [savedGoals, walletBalance, savedSharedPockets, savedContacts, receivedGifts] = await Promise.all([
         loadSavingsGoals(account),
         getAUSDBalance(account.address),
+        loadSharedPockets(account),
+        loadContacts(account),
+        getUnallocatedGiftBalance(account.address),
       ]);
       const pocketEntries = await Promise.all(savedGoals.flatMap((goal) =>
         goal.pocketId
           ? [getSavingsPocket(account.address, goal.pocketId).then((pocket) => [goal.id, pocket] as const)]
           : [],
       ));
+      const sharedEntries = await Promise.all(savedSharedPockets.map((pocket) =>
+        getSavingsPocket(pocket.owner, pocket.pocketId).then((state) => [pocket.id, state] as const),
+      ));
       setGoals(savedGoals);
       setBalance(Number(walletBalance));
       setPocketStates(Object.fromEntries(pocketEntries));
+      setSharedPocketStates(Object.fromEntries(sharedEntries));
+      setSharedPockets(savedSharedPockets);
+      setContacts(savedContacts);
+      setGiftBalance(receivedGifts);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not open your savings plan.');
     } finally {
@@ -76,6 +107,97 @@ export default function SavingsGoalsScreen() {
   }, [account?.address, account?.signerAddress, account?.rpId, account?.credential.credentialId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  async function importSharedPocket() {
+    if (!account) return setError('Unlock your Mera wallet before tracking a shared pocket.');
+    try {
+      const parsed = parseSharedPocketCode(pocketCode.trim());
+      const next: SharedPocket = {
+        ...parsed,
+        id: `${Date.now()}`,
+        createdAt: new Date().toISOString(),
+      };
+      if (sharedPockets.some((item) => item.owner.toLowerCase() === next.owner.toLowerCase() && item.pocketId.toLowerCase() === next.pocketId.toLowerCase())) {
+        throw new Error('This pocket is already in your tracked list.');
+      }
+      const nextPockets = [...sharedPockets, next];
+      await saveSharedPockets(account, nextPockets);
+      setSharedPockets(nextPockets);
+      setPocketCode('');
+      setShowImport(false);
+      Alert.alert('Pocket tracked', `${next.name} was added to your Savings tab.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not import this pocket code.');
+    }
+  }
+
+  async function removeSharedPocket(id: string) {
+    if (!account) return;
+    const next = sharedPockets.filter((item) => item.id !== id);
+    await saveSharedPockets(account, next);
+    setSharedPockets(next);
+  }
+
+  async function sendGift() {
+    if (!account) return setError('Unlock your Mera wallet before sending a gift.');
+    const contact = contacts.find((item) => item.id === giftRecipient);
+    if (!contact) return setError('Choose a saved contact.');
+    if (!giftAmount.trim()) return setError('Enter an amount to gift.');
+    const tracked = sharedPockets.find((item) => item.id === giftPocket);
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Review gift',
+        `${giftAmount} AUSD to ${contact.name}${tracked ? `\nFund pocket: ${tracked.name}` : '\nSend to their received gifts'}`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Confirm with passkey', onPress: () => resolve(true) },
+        ],
+      );
+    });
+    if (!confirmed) return;
+    setSaving(true);
+    setError('');
+    try {
+      const recipient = tracked?.owner ?? contact.address;
+      const result = tracked
+        ? await giftToPocketSponsored(account, recipient, tracked.pocketId, giftAmount)
+        : await giftToPersonSponsored(account, recipient, giftAmount);
+      setGiftAmount('');
+      setGiftRecipient('');
+      setGiftPocket('');
+      Alert.alert('Gift sent', `${result.amount} AUSD was confirmed on Monad testnet.\n\n${result.transactionHash}`);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The sponsored gift did not complete.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function sharePocket(goal: SavingsGoal) {
+    if (!account || !goal.pocketId) return setError('This goal does not have an active pocket to share.');
+    try {
+      const code = createSharedPocketCode({ owner: account.address as `0x${string}`, pocketId: goal.pocketId, name: goal.name });
+      await Share.share({ title: `${goal.name} AUSD pocket`, message: `Track or fund my AUSD savings pocket: ${code}` });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not share this pocket.');
+    }
+  }
+
+  async function withdrawReceivedGifts() {
+    if (!account || !giftBalance || Number(giftBalance) <= 0) return;
+    setSaving(true);
+    setError('');
+    try {
+      const result = await withdrawGiftSponsored(account, giftBalance);
+      Alert.alert('Gift received', `${result.amount} AUSD was sent to your wallet.\n\n${result.transactionHash}`);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The received gift could not be withdrawn.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const createGoal = async () => {
     const parsedTarget = Number(target);
@@ -241,6 +363,55 @@ export default function SavingsGoalsScreen() {
 
           <InlineNotice icon="lock">Goal details are encrypted with a separate Mera PRF namespace. Deposits and payment auto-saves move Monad testnet AUSD into the deployed pocket contract; older goals without an on-chain pocket remain local tracking only.</InlineNotice>
 
+          <Card style={styles.sharedCard}>
+            <View style={styles.sectionHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.createTitle, { color: colors.foreground }]}>Shared pockets</Text>
+                <Text style={[styles.summaryMeta, { color: colors.mutedForeground }]}>Track a pocket someone shared with you, or fund it with a saved contact.</Text>
+              </View>
+              <Feather name="users" size={20} color={colors.primary} />
+            </View>
+            {sharedPockets.map((shared) => {
+              const state = sharedPocketStates[shared.id];
+              return (
+                <View key={shared.id} style={styles.sharedRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.goalName, { color: colors.foreground }]}>{shared.name}</Text>
+                    <Text style={[styles.pocketMeta, { color: colors.mutedForeground }]}>{state?.exists ? `${money(Number(state.balance))} AUSD` : 'Pocket unavailable'} · {shared.owner.slice(0, 8)}…</Text>
+                  </View>
+                  <Pressable onPress={() => void removeSharedPocket(shared.id)}><Text style={[styles.addText, { color: colors.destructive }]}>Remove</Text></Pressable>
+                </View>
+              );
+            })}
+            {showImport ? (
+              <>
+                <TextInput value={pocketCode} onChangeText={setPocketCode} placeholder="Paste shared pocket code" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} />
+                <PrimaryButton label="Track shared pocket" icon="eye" loading={saving} onPress={() => void importSharedPocket()} />
+              </>
+            ) : <PrimaryButton label="Track a shared pocket" icon="link" secondary onPress={() => setShowImport(true)} />}
+          </Card>
+
+          <Card style={styles.sharedCard}>
+            <View style={styles.sectionHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.createTitle, { color: colors.foreground }]}>Gift AUSD</Text>
+                <Text style={[styles.summaryMeta, { color: colors.mutedForeground }]}>Use your private contact names to gift a person or fund their shared pocket.</Text>
+              </View>
+              <Feather name="gift" size={20} color={colors.primary} />
+            </View>
+            {giftBalance !== null && Number(giftBalance) > 0 ? <View style={styles.receivedGift}><Text style={[styles.pocketMeta, { color: colors.mutedForeground }]}>Received gifts waiting for you: {money(Number(giftBalance))} AUSD</Text><PrimaryButton label="Withdraw to wallet" icon="download" secondary loading={saving} onPress={() => void withdrawReceivedGifts()} /></View> : null}
+            {contacts.length === 0 ? <Text style={[styles.empty, { color: colors.mutedForeground }]}>Add a contact in Settings before sending a gift.</Text> : (
+              <>
+                <Text style={[styles.pocketMeta, { color: colors.mutedForeground }]}>Choose a contact</Text>
+                <View style={styles.choiceList}>{contacts.map((contact) => <Pressable key={contact.id} onPress={() => setGiftRecipient(contact.id)} style={[styles.choice, { borderColor: giftRecipient === contact.id ? colors.primary : colors.border, backgroundColor: giftRecipient === contact.id ? colors.secondary : colors.background }]}><Text style={[styles.addText, { color: colors.foreground }]}>{contact.name}</Text></Pressable>)}</View>
+                <TextInput value={giftAmount} onChangeText={setGiftAmount} placeholder="Amount in AUSD" placeholderTextColor={colors.mutedForeground} keyboardType="decimal-pad" style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} />
+                <Text style={[styles.pocketMeta, { color: colors.mutedForeground }]}>Optional: choose a tracked pocket to fund directly.</Text>
+                <View style={styles.choiceList}><Pressable onPress={() => setGiftPocket('')} style={[styles.choice, { borderColor: !giftPocket ? colors.primary : colors.border, backgroundColor: !giftPocket ? colors.secondary : colors.background }]}><Text style={[styles.addText, { color: colors.foreground }]}>Gift person</Text></Pressable>{sharedPockets.map((shared) => <Pressable key={shared.id} onPress={() => setGiftPocket(shared.id)} style={[styles.choice, { borderColor: giftPocket === shared.id ? colors.primary : colors.border, backgroundColor: giftPocket === shared.id ? colors.secondary : colors.background }]}><Text style={[styles.addText, { color: colors.foreground }]}>Fund {shared.name}</Text></Pressable>)}</View>
+                <PrimaryButton label="Review and send gift" icon="lock" loading={saving} onPress={() => void sendGift()} />
+              </>
+            )}
+          </Card>
+
           {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
           {loading ? <Text style={[styles.empty, { color: colors.mutedForeground }]}>Unlocking your private savings plan…</Text> : null}
           {!loading && goals.map((goal) => {
@@ -295,6 +466,10 @@ export default function SavingsGoalsScreen() {
                           >
                             <Feather name="arrow-up-right" size={16} color={colors.primary} />
                             <Text style={[styles.addText, { color: colors.primary }]}>Pay + auto-save</Text>
+                          </Pressable>
+                          <Pressable style={styles.addButton} onPress={() => void sharePocket(goal)}>
+                            <Feather name="share-2" size={16} color={colors.primary} />
+                            <Text style={[styles.addText, { color: colors.primary }]}>Share pocket</Text>
                           </Pressable>
                         </View>
                       </>
@@ -368,6 +543,13 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 10, letterSpacing: 0.7, fontFamily: 'Inter_600SemiBold' },
   summaryAmount: { fontSize: 22, fontFamily: 'Inter_700Bold', marginTop: 2 },
   summaryMeta: { fontSize: 12 },
+  sharedCard: { gap: 13, padding: 16 },
+  sharedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  choiceList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  choice: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9 },
+  receivedGift: { gap: 10 },
+  input: { minHeight: 46, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, fontSize: 14 },
   goalCard: { gap: 13 },
   goalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   goalName: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },

@@ -21,17 +21,21 @@ function NativeTabLayout() {
         />
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="onramp">
-        <NativeTabs.Trigger.Icon sf={{ default: 'plus.circle', selected: 'plus.circle.fill' }} />
-        <NativeTabs.Trigger.Label>Add</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="savings">
+        <NativeTabs.Trigger.Icon sf={{ default: 'target', selected: 'target' }} />
+        <NativeTabs.Trigger.Label>Savings</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="offramp">
-        <NativeTabs.Trigger.Icon sf={{ default: 'arrow.down.left', selected: 'arrow.down.left.circle.fill' }} />
-        <NativeTabs.Trigger.Label>Cash out</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="swap">
+        <NativeTabs.Trigger.Icon sf={{ default: 'arrow.left.arrow.right', selected: 'arrow.left.arrow.right' }} />
+        <NativeTabs.Trigger.Label>Swap</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profile">
-        <NativeTabs.Trigger.Icon sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }} />
-        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="yield">
+        <NativeTabs.Trigger.Icon sf={{ default: 'chart.line.uptrend.xyaxis', selected: 'chart.line.uptrend.xyaxis' }} />
+        <NativeTabs.Trigger.Label>Yield</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="settings">
+        <NativeTabs.Trigger.Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
+        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -89,27 +93,13 @@ function ClassicTabLayout() {
             ),
         }}
       />
-      <Tabs.Screen
-        name="onramp"
-        options={{
-          title: 'Add',
-          tabBarIcon: ({ color }) => <Feather name="plus-circle" size={22} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="offramp"
-        options={{
-          title: 'Cash out',
-          tabBarIcon: ({ color }) => <Feather name="corner-down-left" size={22} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
-        }}
-      />
+      <Tabs.Screen name="savings" options={{ title: 'Savings', tabBarIcon: ({ color }) => <Feather name="target" size={22} color={color} /> }} />
+      <Tabs.Screen name="swap" options={{ title: 'Swap', tabBarIcon: ({ color }) => <Feather name="repeat" size={22} color={color} /> }} />
+      <Tabs.Screen name="yield" options={{ title: 'Yield', tabBarIcon: ({ color }) => <Feather name="trending-up" size={22} color={color} /> }} />
+      <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: ({ color }) => <Feather name="settings" size={22} color={color} /> }} />
+      <Tabs.Screen name="onramp" options={{ href: null }} />
+      <Tabs.Screen name="offramp" options={{ href: null }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="send" options={{ href: null }} />
     </Tabs>
   );

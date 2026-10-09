@@ -117,6 +117,54 @@ const pocketsAbi = [
     ],
     outputs: [{ name: 'savedAmount', type: 'uint256' }],
   },
+  {
+    type: 'function',
+    name: 'giftToPerson',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'recipientOwner', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'gift',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'recipientOwner', type: 'address' },
+      { name: 'pocketId', type: 'bytes32' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'unallocatedGiftBalance',
+    stateMutability: 'view',
+    inputs: [{ name: 'recipient', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'withdrawGift',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'recipient', type: 'address' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'allocateGiftToPocket',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'pocketId', type: 'bytes32' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 export interface SavingsPocketState {
@@ -367,4 +415,84 @@ export async function payWithAutoSaveSponsored(
       exists: true,
     },
   };
+}
+
+export async function getUnallocatedGiftBalance(owner: string) {
+  if (!isAddress(owner, { strict: false })) throw new Error('The wallet address is invalid.');
+  await assertSavingsContract();
+  const rawBalance = await publicClient.readContract({
+    address: SAVINGS_POCKETS_ADDRESS,
+    abi: pocketsAbi,
+    functionName: 'unallocatedGiftBalance',
+    args: [owner as Address],
+  });
+  return formatUnits(rawBalance, 6);
+}
+
+async function sendGift(
+  account: MeraPasskeyProfile,
+  recipient: string,
+  amount: string,
+  pocketId?: string,
+) {
+  if (!isAddress(recipient, { strict: false })) throw new Error('Choose a valid recipient wallet address.');
+  if (recipient.toLowerCase() === account.address.toLowerCase()) throw new Error('Choose a recipient other than your own smart account.');
+  if (pocketId) assertPocketId(pocketId);
+  let amountRaw: bigint;
+  try {
+    amountRaw = parseUnits(amount, 6);
+  } catch {
+    throw new Error('Enter a valid AUSD gift with at most six decimal places.');
+  }
+  if (amountRaw <= 0n) throw new Error('Enter an AUSD gift greater than zero.');
+  await assertSavingsContract();
+  const walletBalance = await publicClient.readContract({
+    address: MONAD_TESTNET.ausdAddress,
+    abi: tokenAbi,
+    functionName: 'balanceOf',
+    args: [account.address as Address],
+  });
+  if (walletBalance < amountRaw) throw new Error(`Your smart account has ${formatUnits(walletBalance, 6)} AUSD available.`);
+  const calls = await getAllowanceCalls(account.address as Address, amountRaw);
+  calls.push({
+    to: SAVINGS_POCKETS_ADDRESS,
+    data: encodeFunctionData({
+      abi: pocketsAbi,
+      functionName: pocketId ? 'gift' : 'giftToPerson',
+      args: pocketId
+        ? [recipient as Address, pocketId as Hex, amountRaw]
+        : [recipient as Address, amountRaw],
+    }),
+  });
+  const result = await sendSponsoredCalls(account, calls);
+  return { ...result, amount: formatUnits(amountRaw, 6) };
+}
+
+export function giftToPersonSponsored(account: MeraPasskeyProfile, recipient: string, amount: string) {
+  return sendGift(account, recipient, amount);
+}
+
+export function giftToPocketSponsored(account: MeraPasskeyProfile, recipient: string, pocketId: string, amount: string) {
+  return sendGift(account, recipient, amount, pocketId);
+}
+
+export async function withdrawGiftSponsored(account: MeraPasskeyProfile, amount: string) {
+  let amountRaw: bigint;
+  try {
+    amountRaw = parseUnits(amount, 6);
+  } catch {
+    throw new Error('Enter a valid AUSD withdrawal with at most six decimal places.');
+  }
+  if (amountRaw <= 0n) throw new Error('Enter an AUSD withdrawal greater than zero.');
+  const available = parseUnits(await getUnallocatedGiftBalance(account.address), 6);
+  if (available < amountRaw) throw new Error(`You have ${formatUnits(available, 6)} AUSD in received gifts.`);
+  const result = await sendSponsoredCalls(account, [{
+    to: SAVINGS_POCKETS_ADDRESS,
+    data: encodeFunctionData({
+      abi: pocketsAbi,
+      functionName: 'withdrawGift',
+      args: [amountRaw, account.address as Address],
+    }),
+  }]);
+  return { ...result, amount: formatUnits(amountRaw, 6) };
 }
