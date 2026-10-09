@@ -24,15 +24,18 @@ export default function ReviewScreen() {
   const colors = useColors();
   const params = useLocalSearchParams<{
     mode?: string; recipient?: string; amount?: string; quoteOutput?: string;
-    quoteOutputRaw?: string; quoteCheckedAt?: string; pairAddress?: string;
+    swapAmount?: string; quoteMode?: string; quoteInputRaw?: string;
+    quoteOutputRaw?: string; quoteCheckedAt?: string; pairAddress?: string; purchaseFeeRate?: string;
   }>();
   const { profile, addTransfer } = useWallet();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const amount = Number(params.amount ?? 0);
   const recipient = typeof params.recipient === 'string' ? params.recipient.trim() : '';
-  const settlement = params.mode === 'settlement';
+  const settlement = params.mode === 'settlement' || params.mode === 'agora-swap';
+  const swapOnly = params.mode === 'agora-swap';
   const quoteOutput = typeof params.quoteOutput === 'string' ? params.quoteOutput : '';
+  const purchaseFeeRate = typeof params.purchaseFeeRate === 'string' ? Number(params.purchaseFeeRate) : 0;
   const quoteCheckedAt = typeof params.quoteCheckedAt === 'string' ? params.quoteCheckedAt : '';
   const quoteTime = quoteCheckedAt && Number.isFinite(Date.parse(quoteCheckedAt))
     ? new Date(quoteCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -65,19 +68,22 @@ export default function ReviewScreen() {
         rpId: profile.passkey.rpId,
       };
       const result = settlement
-        ? await sendSponsoredInstantSettlementSwap(account, recipient, String(params.amount), {
+        ? await sendSponsoredInstantSettlementSwap(account, recipient, swapOnly ? String(params.swapAmount ?? params.amount) : String(params.amount), {
             pairAddress: typeof params.pairAddress === 'string' ? params.pairAddress : '',
+            amountInRaw: typeof params.quoteInputRaw === 'string' ? params.quoteInputRaw : undefined,
             amountOutRaw: typeof params.quoteOutputRaw === 'string' ? params.quoteOutputRaw : '',
             checkedAt: typeof params.quoteCheckedAt === 'string' ? params.quoteCheckedAt : '',
-          })
+            quoteMode: params.quoteMode === 'exact-output' ? 'exact-output' : 'exact-input',
+          }, swapOnly)
         : await sendSponsoredAUSDTransfer(account, recipient, String(params.amount));
       const settlementResult = settlement ? result as SponsoredSettlementResult : null;
+      const sentAmount = settlementResult ? Number(settlementResult.amountIn) : amount;
       const receivedAmount = settlementResult ? Number(settlementResult.amountOut) : amount;
       const receivedCurrency = settlementResult?.outputSymbol ?? 'AUSD';
       const transfer = {
         id: result.transactionHash,
         recipient,
-        amount,
+        amount: sentAmount,
         currency: 'AUSD',
         receivedAmount,
         receivedCurrency,
@@ -93,7 +99,7 @@ export default function ReviewScreen() {
         pathname: '/success',
         params: {
           recipient: transfer.recipient,
-          amount: String(amount),
+          amount: String(sentAmount),
           currency: 'AUSD',
           receiveAmount: String(receivedAmount),
           receiveCurrency: receivedCurrency,
@@ -120,7 +126,7 @@ export default function ReviewScreen() {
       <BackButton onPress={() => router.back()} />
       <View style={styles.heading}>
         <Eyebrow>{settlement ? 'AGORA INSTANT SETTLEMENT' : 'FINAL CHECK'}</Eyebrow>
-        <Title>{settlement ? 'Review payout' : 'Review send'}</Title>
+        <Title>{swapOnly ? 'Review swap' : settlement ? 'Review payout' : 'Review send'}</Title>
       </View>
       <Card style={styles.summaryCard}>
         <View style={styles.summaryLine}>
@@ -140,13 +146,13 @@ export default function ReviewScreen() {
         </View>
         {settlement ? (
           <Text style={[styles.quoteNote, { color: colors.mutedForeground }]}>
-            {quoteTime ? `Quote from ${quoteTime} · ` : ''}CTK is a Monad testnet mock payout token, not fiat. The quote includes the pair’s conversion result; no separate fee breakdown is available here.
+            {quoteTime ? `Quote from ${quoteTime} · ` : ''}{purchaseFeeRate > 0 ? `Agora purchase fee ${(purchaseFeeRate * 100).toLocaleString('en-US', { maximumFractionDigits: 4 })}% is included. ` : 'Agora fees are included in the quoted amount. '}CTK is a Monad testnet demo token, not fiat.
           </Text>
         ) : null}
       </Card>
       <Card style={styles.detailsCard}>
         <View style={styles.detailRow}>
-          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>TO</Text>
+          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>{swapOnly ? 'OUTPUT WALLET' : 'TO'}</Text>
           <Text selectable style={[styles.recipient, { color: colors.foreground }]}>{recipient}</Text>
         </View>
         <View style={[styles.rule, { backgroundColor: colors.border }]} />
@@ -174,14 +180,14 @@ export default function ReviewScreen() {
         <View accessibilityRole="alert" style={[styles.errorPanel, { backgroundColor: colors.secondary }]}>
           <Feather name="alert-circle" size={17} color={colors.destructive} />
           <View style={styles.progressCopy}>
-            <Text style={[styles.progressTitle, { color: colors.destructive }]}>Transfer not confirmed</Text>
+            <Text style={[styles.progressTitle, { color: colors.destructive }]}>{swapOnly ? 'Swap not confirmed' : 'Transfer not confirmed'}</Text>
             <Text style={[styles.error, { color: colors.mutedForeground }]}>{error}</Text>
             <Text style={[styles.errorHint, { color: colors.mutedForeground }]}>If you approved a transaction, check Activity or MonadVision before trying again.</Text>
           </View>
         </View>
       ) : null}
       <PrimaryButton
-        label={busy ? 'Confirming on Monad…' : settlement ? 'Approve & settle' : 'Approve & send'}
+        label={busy ? 'Confirming on Monad…' : swapOnly ? 'Approve & swap' : settlement ? 'Approve & settle' : 'Approve & send'}
         icon="arrow-right"
         onPress={confirmTransfer}
         loading={busy}

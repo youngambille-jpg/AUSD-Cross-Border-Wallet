@@ -1,6 +1,6 @@
 # AUSD Wallet
 
-Expo mobile wallet prototype for AUSD payments. New users move through a three-screen swipe introduction, then create a Mera passkey account. Mera authenticates wallet actions, direct AUSD transfers and Agora Instant Settlement swaps can submit sponsored transactions on Monad testnet, and CTK is used as a mock payout token. No fiat payment, card charge, or cross-chain transfer is submitted.
+Expo mobile wallet prototype for AUSD payments. New users move through a three-screen swipe introduction, then create a Mera passkey account. Mera authenticates wallet actions, direct AUSD transfers and Agora Instant Settlement swaps can submit sponsored transactions on Monad testnet, and CTK is used as a mock payout token. Aurora Intents can quote cross-chain deposits into Monad AUSD and provide a temporary source-chain deposit address.
 
 ## Passkey setup
 
@@ -23,7 +23,9 @@ The Mera PRF derives a standard EVM BIP-44 owner and a Kernel v0.3.1 smart accou
 
 Set `EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL` to an Alchemy Monad testnet RPC URL to route balance and Agora quote reads through Alchemy. The app falls back to Monad's public testnet RPC when this variable is absent. `EXPO_PUBLIC_*` values are embedded in the app bundle; use a dedicated testnet key with appropriate limits and keep local environment files out of version control.
 
-Agora's unauthenticated public metrics endpoint appears on Profile. Authenticated Agora API routes are not called. Add and Cash out tabs describe a planned Alchemy Pay connection; they do not launch checkout or submit a payout. Card issuing and cross-chain transfers are not enabled. Agora's testnet swap is enabled through the existing send/review flow.
+Aurora Intents deposits require `EXPO_PUBLIC_AURORA_INTENTS_API_KEY`, created in [Aurora Intents Studio](https://studio.aurora.dev/). Add it to local environment as shown in `.env.example`. For GitHub Actions builds, set it as the repository variable `EXPO_PUBLIC_AURORA_INTENTS_API_KEY`; for Codemagic, add it to the `ausd_wallet` variable group. Restart or rebuild after configuring. The key is public and embedded in the app bundle. The app loads supported assets, selects the configured Monad AUSD contract, requests a quote, shows the generated deposit address and any required memo, and can query transaction status. The user sends the source token from an external wallet; the app does not sign or submit that source-chain transfer. Always follow the quoted source chain, token, amount, address, memo, and expiry.
+
+Agora's unauthenticated public metrics endpoint appears on Profile. Add and Cash out tabs describe a planned Alchemy Pay connection; they do not launch checkout or submit a payout. Card issuing is not enabled. Agora's testnet swap is enabled through the existing send/review flow.
 
 ## Android demo APK on Codemagic
 

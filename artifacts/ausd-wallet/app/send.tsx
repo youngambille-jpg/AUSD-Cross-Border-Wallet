@@ -8,6 +8,8 @@ import {
   Text,
   TextInput,
   View,
+  PanResponder,
+  useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import { isAddress } from 'viem';
@@ -25,6 +27,7 @@ const money = (amount: number) =>
 export default function SendDrawer() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const { profile, balance: demoBalance } = useWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
@@ -35,7 +38,16 @@ export default function SendDrawer() {
   const [quote, setQuote] = useState<SettlementQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
+  const [drawerOffset, setDrawerOffset] = useState(0);
   const parsedAmount = Number(amount);
+  const drawerPan = PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gesture) => gesture.dy > 5,
+    onPanResponderMove: (_event, gesture) => setDrawerOffset(Math.max(0, gesture.dy)),
+    onPanResponderRelease: (_event, gesture) => {
+      if (gesture.dy > 90 || gesture.vy > 0.8) router.back();
+      setDrawerOffset(0);
+    },
+  });
 
   useEffect(() => {
     if (profile?.mode !== 'mera' || !profile.address) return;
@@ -107,6 +119,7 @@ export default function SendDrawer() {
             quoteOutputRaw: freshQuote.amountOutRaw,
             quoteCheckedAt: freshQuote.checkedAt,
             pairAddress: freshQuote.pairAddress,
+            purchaseFeeRate: freshQuote.purchaseFeeRate,
           },
         });
       } catch (caught) {
@@ -134,6 +147,7 @@ export default function SendDrawer() {
           style={[
             styles.sheet,
             {
+              height: windowHeight * 0.75,
               backgroundColor: colors.background,
               paddingBottom: Math.max(insets.bottom, 18) + 14,
             },
@@ -144,7 +158,7 @@ export default function SendDrawer() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.content}
           >
-            <View style={styles.handleRow}>
+            <View {...drawerPan.panHandlers} style={styles.handleRow}>
               <View style={[styles.handle, { backgroundColor: colors.border }]} />
             </View>
             <View style={styles.heading}>
@@ -249,7 +263,7 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { backgroundColor: 'rgba(16, 18, 24, 0.48)' },
   keyboardLayer: { flex: 1, justifyContent: 'flex-end' },
-  sheet: { maxHeight: '92%', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  sheet: { maxHeight: '75%', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
   content: { paddingHorizontal: 22, paddingTop: 9, gap: 20 },
   modeSwitch: { borderRadius: 14, padding: 4, flexDirection: 'row', gap: 4 },
   modeOption: { flex: 1, minHeight: 39, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },

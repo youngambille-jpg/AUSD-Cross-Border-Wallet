@@ -106,11 +106,48 @@ export const pairAbi = [
   },
   {
     type: 'function',
+    name: 'getAmountsIn',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'amountOut', type: 'uint256' },
+      { name: 'path', type: 'address[]' },
+    ],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }],
+  },
+  {
+    type: 'function',
+    name: 'token0PurchaseFee',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'token1PurchaseFee',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
     name: 'swapExactTokensForTokens',
     stateMutability: 'nonpayable',
     inputs: [
       { name: 'amountIn', type: 'uint256' },
       { name: 'amountOutMin', type: 'uint256' },
+      { name: 'path', type: 'address[]' },
+      { name: 'to', type: 'address' },
+      { name: 'deadline', type: 'uint256' },
+    ],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }],
+  },
+  {
+    type: 'function',
+    name: 'swapTokensForExactTokens',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amountOut', type: 'uint256' },
+      { name: 'amountInMax', type: 'uint256' },
       { name: 'path', type: 'address[]' },
       { name: 'to', type: 'address' },
       { name: 'deadline', type: 'uint256' },
@@ -147,8 +184,11 @@ export interface SettlementQuote {
   factoryAddress: Address;
   pairAddress: Address;
   amountIn: string;
+  amountInRaw: string;
   amountOut: string;
   amountOutRaw: string;
+  quoteMode: 'exact-input' | 'exact-output';
+  purchaseFeeRate: string;
   outputDecimals: number;
   outputSymbol: 'CTK';
 }
@@ -160,15 +200,18 @@ export interface SettlementQuote {
 export async function simulateSettlementSwap(
   amount: string,
   senderAddress: string,
+  quoteMode: 'exact-input' | 'exact-output' = 'exact-input',
 ): Promise<SettlementQuote> {
   if (!isAddress(senderAddress, { strict: false })) throw new Error('A valid sender wallet address is required for the testnet call.');
-  let amountIn: bigint;
+  let requestedAmount: bigint;
   try {
-    amountIn = parseUnits(amount, 6);
+    requestedAmount = parseUnits(amount, quoteMode === 'exact-input' ? 6 : 18);
   } catch {
-    throw new Error('Enter a valid AUSD amount with at most six decimal places.');
+    throw new Error(quoteMode === 'exact-input'
+      ? 'Enter a valid AUSD amount with at most six decimal places.'
+      : 'Enter a valid CTK amount with at most eighteen decimal places.');
   }
-  if (amountIn <= 0n) throw new Error('Enter an AUSD amount greater than zero.');
+  if (requestedAmount <= 0n) throw new Error(`Enter a ${quoteMode === 'exact-input' ? 'AUSD' : 'CTK'} amount greater than zero.`);
 
   try {
     const factoryCode = await client.getBytecode({ address: MONAD_TESTNET.factoryAddress });
@@ -191,12 +234,14 @@ export async function simulateSettlementSwap(
       throw new Error('The factory returned a pair address with no deployed contract code.');
     }
 
-    const [token0, token1, decimals0, decimals1, paused] = await Promise.all([
+    const [token0, token1, decimals0, decimals1, paused, token0PurchaseFee, token1PurchaseFee] = await Promise.all([
       client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token0' }),
       client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token1' }),
       client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token0Decimals' }),
       client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token1Decimals' }),
       client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'isPaused' }),
+      client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token0PurchaseFee' }),
+      client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token1PurchaseFee' }),
     ]);
     if (paused) throw new Error('Agora Instant Settlement is paused on Monad testnet. Try again later.');
     const tokenByLower = [token0.toLowerCase(), token1.toLowerCase()];
@@ -214,15 +259,12 @@ export async function simulateSettlementSwap(
       throw new Error(`The factory pair reports ${inputDecimals} AUSD decimals; expected 6.`);
     }
     const path = [MONAD_TESTNET.ausdAddress, MONAD_TESTNET.ctkAddress] as const;
-    const amounts = await client.readContract({
-      address: pairAddress,
-      abi: pairAbi,
-      functionName: 'getAmountsOut',
-      args: [parseUnits(amount, inputDecimals), [...path]],
-      account: senderAddress as Address,
-    });
-    const amountOut = amounts[amounts.length - 1];
-    if (amountOut === undefined || amountOut <= 0n) {
+    const amounts = quoteMode === 'exact-input'
+      ? await client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'getAmountsOut', args: [requestedAmount, [...path]], account: senderAddress as Address })
+      : await client.readContract({ address: pairAddress, abi: pairAbi, functionName: 'getAmountsIn', args: [requestedAmount, [...path]], account: senderAddress as Address });
+    const amountInRaw = quoteMode === 'exact-input' ? requestedAmount : amounts[0];
+    const amountOutRaw = quoteMode === 'exact-input' ? amounts[amounts.length - 1] : requestedAmount;
+    if (amountInRaw === undefined || amountInRaw <= 0n || amountOutRaw === undefined || amountOutRaw <= 0n) {
       throw new Error('The Agora pair returned no quote for this amount.');
     }
 
@@ -230,9 +272,12 @@ export async function simulateSettlementSwap(
       checkedAt: new Date().toISOString(),
       factoryAddress: MONAD_TESTNET.factoryAddress,
       pairAddress,
-      amountIn: formatUnits(amountIn, 6),
-      amountOut: formatUnits(amountOut, outputDecimals),
-      amountOutRaw: amountOut.toString(),
+      amountIn: formatUnits(amountInRaw, inputDecimals),
+      amountInRaw: amountInRaw.toString(),
+      amountOut: formatUnits(amountOutRaw, outputDecimals),
+      amountOutRaw: amountOutRaw.toString(),
+      quoteMode,
+      purchaseFeeRate: formatUnits(token0.toLowerCase() === MONAD_TESTNET.ctkAddress.toLowerCase() ? token0PurchaseFee : token1PurchaseFee, 18),
       outputDecimals,
       outputSymbol: 'CTK',
     };

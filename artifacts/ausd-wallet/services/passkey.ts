@@ -302,6 +302,7 @@ export interface SponsoredTransferResult {
 
 export interface SponsoredSettlementResult extends SponsoredTransferResult {
   pairAddress: Address;
+  amountIn: string;
   amountOut: string;
   outputSymbol: 'CTK';
 }
@@ -371,13 +372,18 @@ export async function sendSponsoredInstantSettlementSwap(
   account: MeraPasskeyProfile,
   recipient: string,
   amount: string,
-  acceptedQuote: { pairAddress: string; amountOutRaw: string; checkedAt: string },
+  acceptedQuote: { pairAddress: string; amountInRaw?: string; amountOutRaw: string; checkedAt: string; quoteMode?: 'exact-input' | 'exact-output' },
+  allowSelfRecipient = false,
 ): Promise<SponsoredSettlementResult> {
   if (!isAddress(recipient, { strict: false })) throw new Error('Enter a valid recipient wallet address.');
-  if (recipient.toLowerCase() === account.address.toLowerCase()) throw new Error('Choose a recipient other than your own wallet.');
+  if (!allowSelfRecipient && recipient.toLowerCase() === account.address.toLowerCase()) throw new Error('Choose a recipient other than your own wallet.');
   if (!isAddress(acceptedQuote.pairAddress, { strict: false })) throw new Error('The reviewed Agora pair address is invalid.');
   if (!/^\d+$/.test(acceptedQuote.amountOutRaw) || BigInt(acceptedQuote.amountOutRaw) <= 0n) {
     throw new Error('The reviewed CTK quote is invalid. Return to the send form and refresh it.');
+  }
+  const quoteMode = acceptedQuote.quoteMode ?? 'exact-input';
+  if (quoteMode === 'exact-output' && (!acceptedQuote.amountInRaw || !/^\d+$/.test(acceptedQuote.amountInRaw) || BigInt(acceptedQuote.amountInRaw) <= 0n)) {
+    throw new Error('The reviewed maximum AUSD input is invalid. Return to the swap form and refresh the quote.');
   }
   const quoteTime = Date.parse(acceptedQuote.checkedAt);
   if (!Number.isFinite(quoteTime) || Date.now() - quoteTime > 5 * 60_000) {
@@ -387,10 +393,10 @@ export async function sendSponsoredInstantSettlementSwap(
   if (!bundlerUrl) throw new Error('Pimlico is not configured. Set EXPO_PUBLIC_PIMLICO_BUNDLER_URL and rebuild or restart the app.');
   if (!/^https:\/\//i.test(bundlerUrl)) throw new Error('The Pimlico bundler URL must use HTTPS.');
 
-  let amountIn: bigint;
-  try { amountIn = parseUnits(amount, 6); }
-  catch { throw new Error('Enter a valid AUSD amount with at most six decimal places.'); }
-  if (amountIn <= 0n) throw new Error('Enter an AUSD amount greater than zero.');
+  let requestedAmount: bigint;
+  try { requestedAmount = parseUnits(amount, quoteMode === 'exact-input' ? 6 : 18); }
+  catch { throw new Error(quoteMode === 'exact-input' ? 'Enter a valid AUSD amount with at most six decimal places.' : 'Enter a valid CTK amount with at most eighteen decimal places.'); }
+  if (requestedAmount <= 0n) throw new Error('Enter an amount greater than zero.');
 
   const signer = await getMeraViemSigner(account);
   try {
@@ -401,12 +407,18 @@ export async function sendSponsoredInstantSettlementSwap(
 
     // Requote immediately before signing. The exact amount shown in review is
     // the minimum output; a worse quote requires the user to review again.
-    const freshQuote = await simulateSettlementSwap(amount, kernelAccount.address);
-    if (freshQuote.pairAddress.toLowerCase() !== acceptedQuote.pairAddress.toLowerCase() ||
-        BigInt(freshQuote.amountOutRaw) < BigInt(acceptedQuote.amountOutRaw)) {
+    const freshQuote = await simulateSettlementSwap(amount, kernelAccount.address, quoteMode);
+    const acceptedAmountInRaw = quoteMode === 'exact-input'
+      ? requestedAmount.toString()
+      : BigInt(acceptedQuote.amountInRaw!).toString();
+    const quoteWorsened = quoteMode === 'exact-input'
+      ? BigInt(freshQuote.amountOutRaw) < BigInt(acceptedQuote.amountOutRaw)
+      : BigInt(freshQuote.amountInRaw) > BigInt(acceptedAmountInRaw) || freshQuote.amountOutRaw !== acceptedQuote.amountOutRaw;
+    if (freshQuote.pairAddress.toLowerCase() !== acceptedQuote.pairAddress.toLowerCase() || quoteWorsened) {
       throw new Error('The Agora quote changed. Return to the send form and review the updated payout.');
     }
     const pairAddress = freshQuote.pairAddress;
+    const amountInMax = quoteMode === 'exact-input' ? requestedAmount : BigInt(acceptedAmountInRaw);
     const [decimals, balance, approved, allowance, token0, token1, whitelisterCode] = await Promise.all([
       publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'decimals' }),
       publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'balanceOf', args: [kernelAccount.address] }),
@@ -417,7 +429,7 @@ export async function sendSponsoredInstantSettlementSwap(
       publicClient.getBytecode({ address: AGORA_TESTNET_WHITELISTER }),
     ]);
     if (decimals !== 6) throw new Error(`Monad AUSD reports ${decimals} decimals; expected 6.`);
-    if (balance < amountIn) throw new Error(`Insufficient AUSD balance. This smart account holds ${formatUnits(balance, decimals)} AUSD.`);
+    if (balance < amountInMax) throw new Error(`Insufficient AUSD balance. This smart account holds ${formatUnits(balance, decimals)} AUSD.`);
     if (!whitelisterCode || whitelisterCode === '0x') throw new Error('Agora’s Monad testnet whitelister is not deployed at the documented address.');
     if (token0.toLowerCase() !== MONAD_TESTNET.ctkAddress.toLowerCase() ||
         token1.toLowerCase() !== MONAD_TESTNET.ausdAddress.toLowerCase()) {
@@ -432,28 +444,26 @@ export async function sendSponsoredInstantSettlementSwap(
         data: encodeFunctionData({ abi: whitelisterAbi, functionName: 'setApprovedSwapper', args: [kernelAccount.address] }),
       });
     }
-    if (allowance < amountIn) {
+    if (allowance < amountInMax) {
       calls.push({
         to: AUSD_ADDRESS,
         value: 0n,
-        data: encodeFunctionData({ abi: ausdAbi, functionName: 'approve', args: [pairAddress, amountIn] }),
+        data: encodeFunctionData({ abi: ausdAbi, functionName: 'approve', args: [pairAddress, amountInMax] }),
       });
     }
-    calls.push({
-      to: pairAddress,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: pairAbi,
-        functionName: 'swapExactTokensForTokens',
-        args: [
-          amountIn,
-          BigInt(acceptedQuote.amountOutRaw),
-          [MONAD_TESTNET.ausdAddress, MONAD_TESTNET.ctkAddress],
-          recipient as Address,
-          BigInt(Math.floor(Date.now() / 1000) + 300),
-        ],
-      }),
-    });
+    const swapDeadline = BigInt(Math.floor(Date.now() / 1000) + 300);
+    const swapData = quoteMode === 'exact-input'
+      ? encodeFunctionData({
+          abi: pairAbi,
+          functionName: 'swapExactTokensForTokens',
+          args: [requestedAmount, BigInt(acceptedQuote.amountOutRaw), [MONAD_TESTNET.ausdAddress, MONAD_TESTNET.ctkAddress], recipient as Address, swapDeadline],
+        })
+      : encodeFunctionData({
+          abi: pairAbi,
+          functionName: 'swapTokensForExactTokens',
+          args: [requestedAmount, amountInMax, [MONAD_TESTNET.ausdAddress, MONAD_TESTNET.ctkAddress], recipient as Address, swapDeadline],
+        });
+    calls.push({ to: pairAddress, value: 0n, data: swapData });
 
     const pimlicoClient = createPaymasterClient({ transport: http(bundlerUrl) });
     const sponsorshipPolicyId = process.env.EXPO_PUBLIC_PIMLICO_POLICY_ID?.trim();
@@ -473,18 +483,20 @@ export async function sendSponsoredInstantSettlementSwap(
     if (receipt.status !== 'success') throw new Error('The sponsored Agora settlement reverted on Monad testnet.');
 
     let amountOut: bigint | undefined;
+    let actualAmountIn: bigint | undefined;
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() !== pairAddress.toLowerCase()) continue;
       try {
         const event = decodeEventLog({ abi: pairAbi, eventName: 'Swap', data: log.data, topics: log.topics });
         if (event.args.to.toLowerCase() !== recipient.toLowerCase()) continue;
         amountOut = event.args.amount0Out;
+        actualAmountIn = event.args.amount1In;
         break;
       } catch {
         // Other pair events in the same transaction are ignored.
       }
     }
-    if (amountOut === undefined || amountOut < BigInt(acceptedQuote.amountOutRaw)) {
+    if (amountOut === undefined || actualAmountIn === undefined || amountOut < BigInt(acceptedQuote.amountOutRaw)) {
       throw new Error('The transaction was included, but the expected recipient payout could not be verified from the Agora swap event.');
     }
     return {
@@ -492,6 +504,7 @@ export async function sendSponsoredInstantSettlementSwap(
       accountAddress: kernelAccount.address,
       blockNumber: receipt.blockNumber,
       pairAddress,
+      amountIn: formatUnits(actualAmountIn, 6),
       amountOut: formatUnits(amountOut, freshQuote.outputDecimals),
       outputSymbol: 'CTK',
     };

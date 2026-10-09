@@ -23,6 +23,7 @@ jobs:
       EXPO_PUBLIC_PIMLICO_BUNDLER_URL: ${{ secrets.EXPO_PUBLIC_PIMLICO_BUNDLER_URL }}
       EXPO_PUBLIC_PIMLICO_POLICY_ID: ${{ secrets.EXPO_PUBLIC_PIMLICO_POLICY_ID }}
       EXPO_PUBLIC_ENVIO_GRAPHQL_URL: ${{ vars.EXPO_PUBLIC_ENVIO_GRAPHQL_URL }}
+      EXPO_PUBLIC_AURORA_INTENTS_API_KEY: ${{ vars.EXPO_PUBLIC_AURORA_INTENTS_API_KEY }}
 
     steps:
       - name: Check out repository
@@ -78,6 +79,9 @@ jobs:
           fi
           if [[ -z "$EXPO_PUBLIC_ENVIO_GRAPHQL_URL" ]]; then
             echo '::notice::EXPO_PUBLIC_ENVIO_GRAPHQL_URL is unset; activity will use device-saved transfer history.'
+          fi
+          if [[ -z "$EXPO_PUBLIC_AURORA_INTENTS_API_KEY" ]]; then
+            echo '::notice::EXPO_PUBLIC_AURORA_INTENTS_API_KEY is unset; Aurora Intents deposits will be unavailable.'
           fi
 
       - name: Generate Android project

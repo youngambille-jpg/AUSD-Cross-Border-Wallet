@@ -27,7 +27,7 @@ function RootLayoutNav() {
 
   useEffect(() => {
     if (!ready) return;
-    const isProtectedRoute = ['(tabs)', 'review', 'success', 'receive', 'scan'].includes(segments[0] ?? '');
+    const isProtectedRoute = ['(tabs)', 'review', 'success', 'receive', 'scan', 'swap', 'aurora-deposit'].includes(segments[0] ?? '');
     if (isProtectedRoute && (!profile || !authenticated)) router.replace('/');
   }, [ready, profile, authenticated, segments]);
 
@@ -36,9 +36,12 @@ function RootLayoutNav() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="create-account" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="send" options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom', contentStyle: { backgroundColor: 'transparent' } }} />
       <Stack.Screen name="review" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="success" options={{ headerShown: false, animation: 'fade_from_bottom' }} />
       <Stack.Screen name="receive" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="swap" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="aurora-deposit" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="scan" options={{ headerShown: false, animation: 'slide_from_right' }} />
     </Stack>
   );

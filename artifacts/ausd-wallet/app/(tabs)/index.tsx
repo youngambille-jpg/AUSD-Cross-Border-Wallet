@@ -1,28 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
 import { getAUSDBalance, getUSDCBalance } from '@/services/passkey';
 import { formatIndexedTransfer, useIndexedActivity } from '@/services/indexed-activity';
-import {
-  Card,
-  Divider,
-  Eyebrow,
-  Page,
-} from '@/components/Primitives';
+import { Card, Divider, Eyebrow, Page, PrimaryButton } from '@/components/Primitives';
 
 const money = (amount: number) =>
   amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function WalletHome() {
   const colors = useColors();
+  const { height: windowHeight } = useWindowDimensions();
   const { profile, balance, transfers } = useWallet();
   const { transfers: indexedTransfers, error: activityError, configured } = useIndexedActivity(profile?.address);
   const [chainBalance, setChainBalance] = useState<string | null>(null);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [chainBalanceError, setChainBalanceError] = useState('');
+  const [openAction, setOpenAction] = useState<'deposit' | 'swap' | null>(null);
+  const [drawerOffset, setDrawerOffset] = useState(0);
   const isMeraWallet = profile?.mode === 'mera';
 
   useEffect(() => {
@@ -55,6 +53,14 @@ export default function WalletHome() {
   const ausd = isMeraWallet ? (chainBalance === null ? null : Number(chainBalance)) : balance;
   const usdc = isMeraWallet ? (usdcBalance === null ? null : Number(usdcBalance)) : 0;
   const totalBalance = ausd === null || usdc === null ? null : ausd + usdc;
+  const drawerPan = PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gesture) => gesture.dy > 5,
+    onPanResponderMove: (_event, gesture) => setDrawerOffset(Math.max(0, gesture.dy)),
+    onPanResponderRelease: (_event, gesture) => {
+      if (gesture.dy > 90 || gesture.vy > 0.8) setOpenAction(null);
+      setDrawerOffset(0);
+    },
+  });
 
   return (
     <Page contentStyle={styles.page}>
@@ -91,7 +97,7 @@ export default function WalletHome() {
         <QuickAction
           icon="download"
           label="Deposit"
-          onPress={() => router.push('/(tabs)/onramp')}
+          onPress={() => { setDrawerOffset(0); setOpenAction('deposit'); }}
         />
         <QuickAction
           icon="send"
@@ -102,9 +108,58 @@ export default function WalletHome() {
         <QuickAction
           icon="repeat"
           label="Swap"
-          onPress={() => Alert.alert('Swap coming soon', 'Stablecoin swaps are not connected yet. You can still receive and transfer AUSD on Monad testnet.')}
+          onPress={() => { setDrawerOffset(0); setOpenAction('swap'); }}
         />
       </View>
+
+      <Modal
+        visible={openAction !== null}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setOpenAction(null)}
+      >
+        <View style={styles.drawerOverlay}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close action drawer" style={styles.drawerBackdrop} onPress={() => setOpenAction(null)} />
+          <View style={[styles.actionDrawer, { height: windowHeight * 0.75, backgroundColor: colors.background, transform: [{ translateY: drawerOffset }] }]}>
+            <View {...drawerPan.panHandlers} style={styles.drawerHandleArea}>
+              <View style={[styles.drawerHandle, { backgroundColor: colors.border }]} />
+            </View>
+            <View style={styles.drawerHeading}>
+              <View>
+                <Eyebrow>{openAction === 'deposit' ? 'MONEY IN' : 'MONAD TESTNET'}</Eyebrow>
+                <Text style={[styles.drawerTitle, { color: colors.foreground }]}>{openAction === 'deposit' ? 'Add money' : 'Swap tokens'}</Text>
+                <Text style={[styles.drawerSubtitle, { color: colors.mutedForeground }]}>
+                  {openAction === 'deposit' ? 'Get AUSD into your wallet.' : 'Swap AUSD to CTK on Monad testnet.'}
+                </Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close action drawer" onPress={() => setOpenAction(null)} style={[styles.drawerClose, { backgroundColor: colors.secondary }]}>
+                <Feather name="x" size={19} color={colors.foreground} />
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerBody}>
+              {openAction === 'deposit' ? (
+                <>
+                  <View style={[styles.swapNotice, { backgroundColor: colors.secondary }]}>
+                    <Feather name="info" size={16} color={colors.primary} />
+                    <Text style={[styles.actionMethodCopy, { color: colors.mutedForeground, flex: 1 }]}>Choose a direct Monad deposit address or bridge from another supported network with Aurora Intents.</Text>
+                  </View>
+                  <PrimaryButton label="Receive to wallet address" icon="copy" onPress={() => { setOpenAction(null); router.push('/receive'); }} />
+                  <PrimaryButton label="Deposit with Aurora Intents" icon="repeat" secondary onPress={() => { setOpenAction(null); router.push('/aurora-deposit'); }} />
+                </>
+              ) : (
+                <>
+                  <View style={[styles.swapNotice, { backgroundColor: colors.secondary }]}>
+                    <Feather name="info" size={16} color={colors.primary} />
+                    <Text style={[styles.actionMethodCopy, { color: colors.mutedForeground, flex: 1 }]}>AUSD → CTK on Monad testnet via Agora. CTK is a test token, not a stablecoin or fiat payout.</Text>
+                  </View>
+                  <PrimaryButton label="Get a swap quote" icon="arrow-right" onPress={() => { setOpenAction(null); router.push('/swap'); }} />
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <View style={styles.sectionHead}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Savings goals</Text>
@@ -255,6 +310,18 @@ const styles = StyleSheet.create({
   quickAction: { alignItems: 'center', gap: 7, minWidth: 78 },
   quickIcon: { width: 49, height: 49, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   quickLabel: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  drawerOverlay: { flex: 1, justifyContent: 'flex-end' },
+  drawerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(16, 18, 24, 0.48)' },
+  actionDrawer: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 22, paddingBottom: 28, overflow: 'hidden' },
+  drawerHandleArea: { height: 38, alignItems: 'center', justifyContent: 'center' },
+  drawerHandle: { width: 38, height: 4, borderRadius: 3 },
+  drawerHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
+  drawerTitle: { fontSize: 25, lineHeight: 32, letterSpacing: -0.6, fontFamily: 'Inter_600SemiBold', marginTop: 3 },
+  drawerSubtitle: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 3 },
+  drawerClose: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  drawerBody: { gap: 14, paddingBottom: 16 },
+  actionMethodCopy: { fontSize: 11, marginTop: 4, fontFamily: 'Inter_400Regular', lineHeight: 16 },
+  swapNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: 14, padding: 14, marginTop: 6 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 3 },
   sectionTitle: { fontSize: 17, letterSpacing: -0.35, fontFamily: 'Inter_600SemiBold' },
   seeAll: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
