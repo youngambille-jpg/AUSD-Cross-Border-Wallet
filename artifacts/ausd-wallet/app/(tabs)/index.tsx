@@ -163,22 +163,22 @@ export default function WalletHome() {
 
       <View style={styles.sectionHead}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Savings goals</Text>
-        <Pressable onPress={() => Alert.alert('Goals coming soon', 'Goal savings will let you set aside money into dedicated passkey-protected pockets.')}>
+        <Pressable onPress={() => router.push('/savings-goals')}>
           <Text style={[styles.seeAll, { color: colors.primary }]}>See all</Text>
         </Pressable>
       </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Start a savings goal"
-        onPress={() => Alert.alert('Goals coming soon', 'Create and track dedicated savings goals here soon.')}
+        onPress={() => router.push('/savings-goals')}
         style={({ pressed }) => [styles.goalCard, { borderColor: colors.border, backgroundColor: colors.card, opacity: pressed ? 0.7 : 1 }]}
       >
         <View style={[styles.goalIcon, { backgroundColor: colors.secondary }]}>
           <Feather name="target" size={19} color={colors.foreground} />
         </View>
         <View style={styles.goalCopy}>
-          <Text style={[styles.goalTitle, { color: colors.foreground }]}>Make your first goal</Text>
-          <Text style={[styles.goalSubtitle, { color: colors.mutedForeground }]}>Save for something that matters</Text>
+          <Text style={[styles.goalTitle, { color: colors.foreground }]}>Create a savings goal</Text>
+          <Text style={[styles.goalSubtitle, { color: colors.mutedForeground }]}>Plan privately with your Mera passkey</Text>
         </View>
         <Feather name="plus-circle" size={20} color={colors.primary} />
       </Pressable>

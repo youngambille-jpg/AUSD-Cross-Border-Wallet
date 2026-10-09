@@ -261,6 +261,39 @@ export async function getMeraViemSigner(account: MeraPasskeyProfile) {
   return signer;
 }
 
+/** Encrypts non-wallet app state with a namespaced Mera PRF secret vault. */
+export async function encryptWithMeraPasskey(account: MeraPasskeyProfile, value: string) {
+  const mera = await import('@category-labs/mera');
+  const webAuthnClient = await getNativeWebAuthnClient();
+  const secret = new TextEncoder().encode(value);
+  try {
+    return await mera.createSecretVaultWithExistingPasskey({
+      rpId: account.rpId,
+      credential: account.credential,
+      secret,
+      ...(webAuthnClient ? { webAuthnClient } : {}),
+    });
+  } finally {
+    secret.fill(0);
+  }
+}
+
+/** Opens Mera-encrypted app state without exposing or persisting PRF output. */
+export async function decryptWithMeraPasskey(account: MeraPasskeyProfile, vault: unknown) {
+  const mera = await import('@category-labs/mera');
+  const webAuthnClient = await getNativeWebAuthnClient();
+  const plaintext = await mera.decryptSecretVaultWithPasskey({
+    rpId: account.rpId,
+    vault: mera.parseSecretVault(vault),
+    ...(webAuthnClient ? { webAuthnClient } : {}),
+  });
+  try {
+    return new TextDecoder().decode(plaintext);
+  } finally {
+    plaintext.fill(0);
+  }
+}
+
 export async function authenticateMeraPasskey(account: MeraPasskeyProfile): Promise<string> {
   const signer = await getMeraViemSigner(account);
   try {
