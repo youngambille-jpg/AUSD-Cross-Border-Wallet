@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
 import { Card, Eyebrow, InlineNotice, Page, Title } from '@/components/Primitives';
-import { formatIndexedTransfer, useIndexedActivity } from '@/services/indexed-activity';
+import { formatIndexedSavings, formatIndexedTransfer, useIndexedActivity } from '@/services/indexed-activity';
 
 const amountText = (amount: number) =>
   amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
@@ -12,7 +12,7 @@ const amountText = (amount: number) =>
 export default function ActivityScreen() {
   const colors = useColors();
   const { profile, transfers: localTransfers } = useWallet();
-  const { transfers: indexedTransfers, loading, error, configured } = useIndexedActivity(profile?.address);
+  const { transfers: indexedTransfers, savings: indexedSavings, loading, error, configured } = useIndexedActivity(profile?.address);
   const useIndexed = configured && !error;
   const indexedHashes = new Set(indexedTransfers.map((item) => item.transactionHash.toLowerCase()));
   const transfers = useIndexed
@@ -40,6 +40,27 @@ export default function ActivityScreen() {
           {loading ? 'Syncing on-chain activity' : useIndexed ? 'Live activity · Envio indexer' : error ? 'Showing saved activity · indexer unavailable' : 'Saved on this device'}
         </Text>
       </View>
+      {indexedSavings.length ? (
+        <View style={styles.list}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Savings activity</Text>
+          {indexedSavings.map((item) => {
+            const activity = formatIndexedSavings(item, profile?.address ?? '');
+            return (
+              <Card key={activity.id} style={styles.transferCard}>
+                <View style={styles.cardTop}>
+                  <View style={styles.transferType}>
+                    <View style={[styles.icon, { backgroundColor: colors.secondary }]}><Feather name="target" size={16} color={colors.foreground} /></View>
+                    <View style={styles.typeCopy}><Text style={[styles.name, { color: colors.foreground }]}>{activity.title}</Text><Text style={[styles.meta, { color: colors.mutedForeground }]}>{new Date(activity.createdAt).toLocaleString()} · confirmed on-chain</Text></View>
+                  </View>
+                  {activity.amount > 0 ? <Text style={[styles.indexedAmount, { color: colors.foreground }]}>{activity.outgoing ? '−' : '+'}{amountText(activity.amount)} AUSD</Text> : null}
+                </View>
+                {activity.counterparty ? <Text selectable style={[styles.recipient, { color: colors.mutedForeground }]}>{activity.counterparty}</Text> : null}
+                <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(`https://testnet.monadvision.com/tx/${activity.transactionHash}`)}><Text style={[styles.explorerText, { color: colors.primary }]}>View on MonadVision</Text></Pressable>
+              </Card>
+            );
+          })}
+        </View>
+      ) : null}
       {transfers.length ? (
         <View style={styles.list}>
           {transfers.map((entry) => {
@@ -184,6 +205,7 @@ const styles = StyleSheet.create({
   page: { gap: 13, paddingTop: 10 },
   intro: { fontSize: 13, lineHeight: 19, fontFamily: 'Inter_400Regular', marginBottom: 3 },
   list: { gap: 12 },
+  sectionTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
   sourceBanner: { minHeight: 36, borderRadius: 10, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 8 },
   sourceDot: { width: 7, height: 7, borderRadius: 4 },
   sourceText: { fontSize: 10, fontFamily: 'Inter_500Medium' },

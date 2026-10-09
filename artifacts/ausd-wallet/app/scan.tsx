@@ -20,9 +20,11 @@ function readPaymentRequest(value: string) {
     if (url.protocol !== 'ausd-wallet:' || url.pathname.replace(/^\/+/, '') !== 'send') return null;
     const recipient = url.searchParams.get('recipient')?.trim() ?? '';
     const amount = url.searchParams.get('amount')?.trim() ?? '';
+    const token = url.searchParams.get('token')?.trim().toUpperCase() ?? 'AUSD';
     if (!isAddress(recipient, { strict: false })) return null;
     if (amount && (!/^\d+(\.\d{1,6})?$/.test(amount) || Number(amount) <= 0)) return null;
-    return { recipient, amount };
+    if (token !== 'AUSD' && token !== 'USDC') return null;
+    return { recipient, amount, token };
   } catch {
     return null;
   }
@@ -49,9 +51,9 @@ export default function ScanScreen() {
     <Page contentStyle={styles.page}>
       <BackButton onPress={() => router.back()} />
       <View style={styles.heading}>
-        <Eyebrow>SEND AUSD</Eyebrow>
+        <Eyebrow>SEND TOKEN</Eyebrow>
         <Title>Scan a payment request.</Title>
-        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Only AUSD Wallet requests on Monad testnet are accepted.</Text>
+        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>AUSD and USDC requests on Monad testnet are accepted.</Text>
       </View>
 
       {!permission ? (

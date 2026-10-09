@@ -6,7 +6,7 @@ import { isAddress } from 'viem';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
 import {
-  sendSponsoredAUSDTransfer,
+  sendSponsoredTokenTransfer,
   sendSponsoredInstantSettlementSwap,
   type SponsoredSettlementResult,
 } from '@/services/passkey';
@@ -15,6 +15,7 @@ import {
   payWithAutoSaveSponsored,
 } from '@/services/savings-pockets';
 import { MONAD_TESTNET } from '@/services/settlement';
+import { getWalletToken, WALLET_TOKENS } from '@/services/tokens';
 import {
   BackButton,
   Card,
@@ -28,7 +29,7 @@ export default function ReviewScreen() {
   const colors = useColors();
   const params = useLocalSearchParams<{
     mode?: string; recipient?: string; recipientName?: string; amount?: string; quoteOutput?: string;
-    swapAmount?: string; quoteMode?: string; quoteInputRaw?: string;
+    swapAmount?: string; quoteMode?: string; quoteInputRaw?: string; inputToken?: string; outputToken?: string; token?: string;
     quoteOutputRaw?: string; quoteCheckedAt?: string; pairAddress?: string; purchaseFeeRate?: string;
     pocketId?: string; goalName?: string; autoSaveBps?: string;
   }>();
@@ -38,9 +39,13 @@ export default function ReviewScreen() {
   const amount = Number(params.amount ?? 0);
   const recipient = typeof params.recipient === 'string' ? params.recipient.trim() : '';
   const recipientName = typeof params.recipientName === 'string' ? params.recipientName.trim() : '';
-  const settlement = params.mode === 'settlement' || params.mode === 'agora-swap';
-  const swapOnly = params.mode === 'agora-swap';
+  const tokenSwap = params.mode === 'token-swap';
+  const settlement = params.mode === 'settlement' || params.mode === 'agora-swap' || tokenSwap;
+  const swapOnly = params.mode === 'agora-swap' || tokenSwap;
+  const inputToken = getWalletToken(params.inputToken, 'AUSD');
+  const outputToken = getWalletToken(params.outputToken, tokenSwap ? 'USDC' : 'CTK');
   const autoSave = params.mode === 'autosave';
+  const sendToken = autoSave ? 'AUSD' : settlement ? inputToken : getWalletToken(params.token, 'AUSD');
   const pocketId = typeof params.pocketId === 'string' ? params.pocketId : '';
   const goalName = typeof params.goalName === 'string' ? params.goalName : '';
   const autoSaveBps = typeof params.autoSaveBps === 'string' ? Number(params.autoSaveBps) : 0;
@@ -97,20 +102,21 @@ export default function ReviewScreen() {
             amountOutRaw: typeof params.quoteOutputRaw === 'string' ? params.quoteOutputRaw : '',
             checkedAt: typeof params.quoteCheckedAt === 'string' ? params.quoteCheckedAt : '',
             quoteMode: params.quoteMode === 'exact-output' ? 'exact-output' : 'exact-input',
-          }, swapOnly)
-          : await sendSponsoredAUSDTransfer(account, recipient, String(params.amount));
+          }, swapOnly, inputToken, outputToken)
+          : await sendSponsoredTokenTransfer(account, recipient, String(params.amount), getWalletToken(params.token, 'AUSD'));
       const settlementResult = settlement ? result as SponsoredSettlementResult : null;
       const autoSaveResult = autoSave ? result as Awaited<ReturnType<typeof payWithAutoSaveSponsored>> : null;
       const sentAmount = autoSaveResult
         ? Number(autoSaveResult.totalDebit)
         : settlementResult ? Number(settlementResult.amountIn) : amount;
       const receivedAmount = settlementResult ? Number(settlementResult.amountOut) : amount;
-      const receivedCurrency = settlementResult?.outputSymbol ?? 'AUSD';
+      const sentCurrency = autoSaveResult ? 'AUSD' : settlementResult?.inputSymbol ?? getWalletToken(params.token, 'AUSD');
+      const receivedCurrency = settlementResult?.outputSymbol ?? sentCurrency;
       const transfer = {
         id: result.transactionHash,
         recipient,
         amount: sentAmount,
-        currency: 'AUSD',
+        currency: sentCurrency,
         receivedAmount,
         receivedCurrency,
         settlementKind: settlement
@@ -142,7 +148,7 @@ export default function ReviewScreen() {
         params: {
           recipient: transfer.recipient,
           amount: autoSaveResult?.paymentAmount ?? String(sentAmount),
-          currency: 'AUSD',
+          currency: sentCurrency,
           receiveAmount: String(receivedAmount),
           receiveCurrency: receivedCurrency,
           settlement: settlement ? 'agora' : 'direct',
@@ -180,7 +186,7 @@ export default function ReviewScreen() {
         <View style={styles.summaryLine}>
           <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>{autoSave ? 'RECIPIENT PAYMENT' : 'YOU SEND'}</Text>
           <Text style={[styles.amountValue, { color: colors.foreground }]}>
-            {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} <Text style={[styles.amountUnit, { color: colors.mutedForeground }]}>AUSD</Text>
+            {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: WALLET_TOKENS[sendToken].decimals })} <Text style={[styles.amountUnit, { color: colors.mutedForeground }]}>{sendToken}</Text>
           </Text>
         </View>
         {autoSave && autoSaveBreakdown ? (
@@ -206,13 +212,13 @@ export default function ReviewScreen() {
           <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>{settlement ? 'AGORA QUOTED OUTPUT' : 'RECIPIENT RECEIVES'}</Text>
           <Text style={[styles.outputValue, { color: colors.foreground }]}>
             {settlement
-              ? quoteOutput ? `${Number(quoteOutput).toLocaleString('en-US', { maximumFractionDigits: 6 })} CTK` : 'Quote unavailable'
-              : `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} AUSD`}
+              ? quoteOutput ? `${Number(quoteOutput).toLocaleString('en-US', { maximumFractionDigits: WALLET_TOKENS[outputToken].decimals })} ${outputToken}` : 'Quote unavailable'
+              : `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: WALLET_TOKENS[sendToken].decimals })} ${sendToken}`}
           </Text>
         </View>
         {settlement ? (
           <Text style={[styles.quoteNote, { color: colors.mutedForeground }]}>
-            {quoteTime ? `Quote from ${quoteTime} · ` : ''}{purchaseFeeRate > 0 ? `Agora purchase fee ${(purchaseFeeRate * 100).toLocaleString('en-US', { maximumFractionDigits: 4 })}% is included. ` : 'Agora fees are included in the quoted amount. '}CTK is a Monad testnet demo token, not fiat.
+            {quoteTime ? `Quote from ${quoteTime} · ` : ''}{purchaseFeeRate > 0 ? `Pair fee ${(purchaseFeeRate * 100).toLocaleString('en-US', { maximumFractionDigits: 4 })}% is included. ` : 'The quoted output is protected by the reviewed minimum. '}{tokenSwap ? `${inputToken} to ${outputToken}` : 'CTK is the testnet settlement token.'}
           </Text>
         ) : null}
       </Card>

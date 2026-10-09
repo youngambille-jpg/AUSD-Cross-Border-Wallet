@@ -17,15 +17,16 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
-import { getAUSDBalance } from '@/services/passkey';
+import { getTokenBalance } from '@/services/passkey';
 import { simulateSettlementSwap, type SettlementQuote } from '@/services/settlement';
+import { TRANSFER_TOKENS, WALLET_TOKENS, type WalletToken } from '@/services/tokens';
 import { PrimaryButton } from '@/components/Primitives';
 
 const money = (amount: number) =>
   amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 
 export default function SendDrawer() {
-  const params = useLocalSearchParams<{ recipient?: string; recipientName?: string }>();
+  const params = useLocalSearchParams<{ recipient?: string; recipientName?: string; token?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -37,6 +38,7 @@ export default function SendDrawer() {
   const [balanceError, setBalanceError] = useState('');
   const [error, setError] = useState('');
   const [sendMode, setSendMode] = useState<'direct' | 'settlement'>('direct');
+  const [token, setToken] = useState<WalletToken>('AUSD');
   const [quote, setQuote] = useState<SettlementQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
@@ -59,15 +61,19 @@ export default function SendDrawer() {
   }, [params.recipient, params.recipientName]);
 
   useEffect(() => {
+    if (params.token === 'AUSD' || params.token === 'USDC') setToken(params.token);
+  }, [params.token]);
+
+  useEffect(() => {
     if (profile?.mode !== 'mera' || !profile.address) return;
     let active = true;
-    getAUSDBalance(profile.address)
+    getTokenBalance(profile.address, sendMode === 'settlement' ? 'AUSD' : token)
       .then((value) => { if (active) setAvailableBalance(Number(value)); })
       .catch((caught: unknown) => {
         if (active) setBalanceError(caught instanceof Error ? caught.message : 'Balance unavailable');
       });
     return () => { active = false; };
-  }, [profile?.address, profile?.mode]);
+  }, [sendMode, token, profile?.address, profile?.mode]);
 
   const balance = profile?.mode === 'mera' ? availableBalance : demoBalance;
 
@@ -94,7 +100,7 @@ export default function SendDrawer() {
   async function continueToReview() {
     setError('');
     if (profile?.mode !== 'mera') {
-      setError('Create a Mera passkey wallet to send testnet AUSD.');
+      setError(`Create a Mera passkey wallet to send testnet ${sendMode === 'settlement' ? 'AUSD' : token}.`);
       return;
     }
     if (!profile.address || !profile.signerAddress || !profile.passkey) {
@@ -106,7 +112,7 @@ export default function SendDrawer() {
       return;
     }
     if (!/^\d+(\.\d{1,6})?$/.test(amount) || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      setError('Enter an amount with up to six decimal places.');
+      setError(`Enter an amount with up to ${WALLET_TOKENS[sendMode === 'settlement' ? 'AUSD' : token].decimals} decimal places.`);
       return;
     }
     if (balance === null) {
@@ -114,7 +120,7 @@ export default function SendDrawer() {
       return;
     }
     if (parsedAmount > balance) {
-      setError(`Available: ${money(balance)} AUSD.`);
+      setError(`Available: ${money(balance)} ${sendMode === 'settlement' ? 'AUSD' : token}.`);
       return;
     }
     if (sendMode === 'settlement') {
@@ -123,7 +129,7 @@ export default function SendDrawer() {
         router.push({
           pathname: '/review',
           params: {
-            mode: 'settlement', recipient: recipient.trim(), recipientName, amount,
+            mode: 'settlement', recipient: recipient.trim(), recipientName, amount, token: 'AUSD',
             quoteOutput: freshQuote.amountOut,
             quoteOutputRaw: freshQuote.amountOutRaw,
             quoteCheckedAt: freshQuote.checkedAt,
@@ -136,7 +142,7 @@ export default function SendDrawer() {
       }
       return;
     }
-    router.push({ pathname: '/review', params: { mode: 'direct', recipient: recipient.trim(), recipientName, amount } });
+    router.push({ pathname: '/review', params: { mode: 'direct', recipient: recipient.trim(), recipientName, amount, token } });
   }
 
   return (
@@ -172,7 +178,7 @@ export default function SendDrawer() {
             </View>
             <View style={styles.heading}>
               <View>
-                <Text style={[styles.title, { color: colors.foreground }]}>{sendMode === 'direct' ? 'Send AUSD' : 'Cross-border'}</Text>
+                <Text style={[styles.title, { color: colors.foreground }]}>{sendMode === 'direct' ? `Send ${token}` : 'Cross-border'}</Text>
                 <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{sendMode === 'direct' ? 'Direct wallet transfer' : 'Agora instant settlement · testnet'}</Text>
               </View>
               <Pressable
@@ -184,6 +190,16 @@ export default function SendDrawer() {
                 <Feather name="x" size={19} color={colors.foreground} />
               </Pressable>
             </View>
+
+            {sendMode === 'direct' ? (
+              <View style={styles.tokenRow}>
+                {TRANSFER_TOKENS.map((option) => (
+                  <Pressable key={option} onPress={() => { setToken(option); setAmount(''); setError(''); }} style={[styles.tokenOption, { backgroundColor: token === option ? colors.primary : colors.secondary }]}>
+                    <Text style={[styles.modeText, { color: token === option ? colors.primaryForeground : colors.foreground }]}>{option}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
 
             <View style={[styles.modeSwitch, { backgroundColor: colors.secondary }]}>
               <Pressable onPress={() => { setSendMode('direct'); setError(''); }} style={[styles.modeOption, sendMode === 'direct' && { backgroundColor: colors.background }]}>
@@ -199,7 +215,7 @@ export default function SendDrawer() {
               <View style={styles.amountRow}>
                 <Text style={[styles.dollar, { color: colors.foreground }]}>$</Text>
                 <TextInput
-                  accessibilityLabel="AUSD amount"
+                  accessibilityLabel={`${sendMode === 'settlement' ? 'AUSD' : token} amount`}
                   value={amount}
                   onChangeText={(value) => setAmount(value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
                   placeholder="0"
@@ -209,13 +225,13 @@ export default function SendDrawer() {
                   style={[styles.amountInput, { color: colors.foreground }]}
                   autoFocus
                 />
-                <Text style={[styles.currency, { color: colors.mutedForeground }]}>AUSD</Text>
+                <Text style={[styles.currency, { color: colors.mutedForeground }]}>{sendMode === 'settlement' ? 'AUSD' : token}</Text>
               </View>
               <View style={styles.balanceRow}>
                 <Text style={[styles.balanceText, { color: colors.mutedForeground }]}>
                   {profile?.mode === 'mera'
-                    ? availableBalance === null ? balanceError || 'Loading balance…' : `Available ${money(availableBalance)} AUSD`
-                    : `Demo balance ${money(demoBalance)} AUSD`}
+                    ? availableBalance === null ? balanceError || 'Loading balance…' : `Available ${money(availableBalance)} ${sendMode === 'settlement' ? 'AUSD' : token}`
+                    : `Demo balance ${money(demoBalance)} ${sendMode === 'settlement' ? 'AUSD' : token}`}
                 </Text>
                 {profile?.mode === 'mera' && availableBalance !== null ? (
                   <Pressable onPress={() => setAmount(String(availableBalance))}>
@@ -278,6 +294,8 @@ const styles = StyleSheet.create({
   sheet: { maxHeight: '75%', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
   content: { paddingHorizontal: 22, paddingTop: 9, gap: 20 },
   modeSwitch: { borderRadius: 14, padding: 4, flexDirection: 'row', gap: 4 },
+  tokenRow: { flexDirection: 'row', gap: 8 },
+  tokenOption: { minHeight: 36, paddingHorizontal: 18, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   modeOption: { flex: 1, minHeight: 39, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   modeText: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   handleRow: { alignItems: 'center', height: 12 },

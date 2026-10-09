@@ -26,6 +26,7 @@ import {
   type SharedPocket,
 } from '@/services/shared-pockets';
 import { useWallet } from '@/state/wallet-context';
+import { formatIndexedSavings, useIndexedActivity } from '@/services/indexed-activity';
 
 const money = (amount: number) => amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -57,6 +58,7 @@ export default function SavingsGoalsScreen() {
   const account = profile?.mode === 'mera' && profile.address && profile.signerAddress && profile.passkey
     ? { address: profile.address, signerAddress: profile.signerAddress, credential: profile.passkey.credential, rpId: profile.passkey.rpId }
     : null;
+  const { savings: indexedSavings } = useIndexedActivity(account?.address);
   const onChainTotal = useMemo(
     () => goals.reduce((sum, goal) => {
       const pocket = pocketStates[goal.id];
@@ -362,6 +364,12 @@ export default function SavingsGoalsScreen() {
           </Card>
 
           <InlineNotice icon="lock">Goal details are encrypted with a separate Mera PRF namespace. Deposits and payment auto-saves move Monad testnet AUSD into the deployed pocket contract; older goals without an on-chain pocket remain local tracking only.</InlineNotice>
+
+          {indexedSavings.length ? <Card style={styles.sharedCard}>
+            <View style={styles.sectionHeader}><View style={{ flex: 1 }}><Text style={[styles.createTitle, { color: colors.foreground }]}>Recent pocket activity</Text><Text style={[styles.summaryMeta, { color: colors.mutedForeground }]}>Confirmed SavingsPockets events from Monad.</Text></View><Feather name="activity" size={20} color={colors.primary} /></View>
+            {indexedSavings.slice(0, 3).map((item) => { const activity = formatIndexedSavings(item, account?.address ?? ''); return <View key={activity.id} style={styles.sharedRow}><View style={{ flex: 1 }}><Text style={[styles.goalName, { color: colors.foreground }]}>{activity.title}</Text><Text style={[styles.pocketMeta, { color: colors.mutedForeground }]}>{activity.amount > 0 ? `${money(activity.amount)} AUSD · ` : ''}{new Date(activity.createdAt).toLocaleDateString()}</Text></View><Feather name={activity.outgoing ? 'arrow-up-right' : 'arrow-down-left'} size={16} color={colors.foreground} /></View>; })}
+            <PrimaryButton label="View all activity" icon="arrow-right" secondary onPress={() => router.push('/(tabs)/activity')} />
+          </Card> : null}
 
           <Card style={styles.sharedCard}>
             <View style={styles.sectionHeader}>

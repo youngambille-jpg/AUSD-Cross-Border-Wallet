@@ -25,9 +25,10 @@ import {
   AGORA_TESTNET_WHITELISTER,
   MONAD_TESTNET,
   pairAbi,
-  simulateSettlementSwap,
+  simulateTokenSwap,
   whitelisterAbi,
 } from '@/services/settlement';
+import { WALLET_TOKENS, type WalletToken } from '@/services/tokens';
 
 export interface MeraAccount {
   address: string;
@@ -52,9 +53,6 @@ export const MONAD_CHAIN = defineChain({
 
 const publicClient = createPublicClient({ chain: MONAD_CHAIN, transport: http(MONAD_TESTNET.rpcUrl) });
 const entryPoint = { address: entryPoint07Address, version: '0.7' as const };
-const AUSD_ADDRESS = '0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC' as Address;
-// Circle's native USDC deployment on Monad testnet.
-const USDC_ADDRESS = '0x534b2f3A21130d7a60830c2Df862319e593943A3' as Address;
 const ausdAbi = [
   { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
@@ -344,22 +342,21 @@ export async function authenticateMeraPasskey(account: MeraPasskeyProfile): Prom
 }
 
 export async function getAUSDBalance(account: string) {
-  if (!isAddress(account, { strict: false })) throw new Error('Invalid Monad wallet address.');
-  const [decimals, rawBalance] = await Promise.all([
-    publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'decimals' }),
-    publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'balanceOf', args: [account as Address] }),
-  ]);
-  if (decimals !== 6) throw new Error(`Monad AUSD reports ${decimals} decimals; expected 6.`);
-  return formatUnits(rawBalance, decimals);
+  return getTokenBalance(account, 'AUSD');
 }
 
 export async function getUSDCBalance(account: string) {
+  return getTokenBalance(account, 'USDC');
+}
+
+export async function getTokenBalance(account: string, token: WalletToken) {
   if (!isAddress(account, { strict: false })) throw new Error('Invalid Monad wallet address.');
+  const info = WALLET_TOKENS[token];
   const [decimals, rawBalance] = await Promise.all([
-    publicClient.readContract({ address: USDC_ADDRESS, abi: balanceAbi, functionName: 'decimals' }),
-    publicClient.readContract({ address: USDC_ADDRESS, abi: balanceAbi, functionName: 'balanceOf', args: [account as Address] }),
+    publicClient.readContract({ address: info.address, abi: balanceAbi, functionName: 'decimals' }),
+    publicClient.readContract({ address: info.address, abi: balanceAbi, functionName: 'balanceOf', args: [account as Address] }),
   ]);
-  if (decimals !== 6) throw new Error(`Monad USDC reports ${decimals} decimals; expected 6.`);
+  if (decimals !== info.decimals) throw new Error(`Monad ${token} reports ${decimals} decimals; expected ${info.decimals}.`);
   return formatUnits(rawBalance, decimals);
 }
 
@@ -373,7 +370,8 @@ export interface SponsoredSettlementResult extends SponsoredTransferResult {
   pairAddress: Address;
   amountIn: string;
   amountOut: string;
-  outputSymbol: 'CTK';
+  inputSymbol: WalletToken;
+  outputSymbol: WalletToken;
 }
 
 export interface SponsoredCall {
@@ -437,6 +435,15 @@ export async function sendSponsoredAUSDTransfer(
   recipient: string,
   amount: string,
 ): Promise<SponsoredTransferResult> {
+  return sendSponsoredTokenTransfer(account, recipient, amount, 'AUSD');
+}
+
+export async function sendSponsoredTokenTransfer(
+  account: MeraPasskeyProfile,
+  recipient: string,
+  amount: string,
+  token: WalletToken,
+): Promise<SponsoredTransferResult> {
   if (!isAddress(recipient, { strict: false })) throw new Error('Enter a valid recipient wallet address.');
   if (recipient.toLowerCase() === account.address.toLowerCase()) throw new Error('Choose a recipient other than your own wallet.');
   const bundlerUrl = process.env.EXPO_PUBLIC_PIMLICO_BUNDLER_URL?.trim();
@@ -445,11 +452,11 @@ export async function sendSponsoredAUSDTransfer(
 
   let amountIn: bigint;
   try {
-    amountIn = parseUnits(amount, 6);
+    amountIn = parseUnits(amount, WALLET_TOKENS[token].decimals);
   } catch {
-    throw new Error('Enter a valid AUSD amount with at most six decimal places.');
+    throw new Error(`Enter a valid ${token} amount with at most ${WALLET_TOKENS[token].decimals} decimal places.`);
   }
-  if (amountIn <= 0n) throw new Error('Enter an AUSD amount greater than zero.');
+  if (amountIn <= 0n) throw new Error(`Enter a ${token} amount greater than zero.`);
 
   const signer = await getMeraViemSigner(account);
   try {
@@ -458,11 +465,11 @@ export async function sendSponsoredAUSDTransfer(
       throw new Error('The passkey-derived smart account changed. Stop and restore the matching wallet before sending.');
     }
     const [decimals, balance] = await Promise.all([
-      publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'decimals' }),
-      publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'balanceOf', args: [kernelAccount.address] }),
+      publicClient.readContract({ address: WALLET_TOKENS[token].address, abi: balanceAbi, functionName: 'decimals' }),
+      publicClient.readContract({ address: WALLET_TOKENS[token].address, abi: balanceAbi, functionName: 'balanceOf', args: [kernelAccount.address] }),
     ]);
-    if (decimals !== 6) throw new Error(`Monad AUSD reports ${decimals} decimals; expected 6.`);
-    if (balance < amountIn) throw new Error(`Insufficient AUSD balance. This smart account holds ${formatUnits(balance, decimals)} AUSD.`);
+    if (decimals !== WALLET_TOKENS[token].decimals) throw new Error(`Monad ${token} reports ${decimals} decimals; expected ${WALLET_TOKENS[token].decimals}.`);
+    if (balance < amountIn) throw new Error(`Insufficient ${token} balance. This smart account holds ${formatUnits(balance, decimals)} ${token}.`);
 
     const pimlicoClient = createPaymasterClient({ transport: http(bundlerUrl) });
     const sponsorshipPolicyId = process.env.EXPO_PUBLIC_PIMLICO_POLICY_ID?.trim();
@@ -476,7 +483,7 @@ export async function sendSponsoredAUSDTransfer(
     });
 
     const transactionHash = await smartAccountClient.sendTransaction({
-      to: AUSD_ADDRESS,
+      to: WALLET_TOKENS[token].address,
       data: encodeFunctionData({
         abi: ausdAbi,
         functionName: 'transfer',
@@ -486,7 +493,7 @@ export async function sendSponsoredAUSDTransfer(
       ...(sponsorshipPolicyId ? { paymasterContext: { sponsorshipPolicyId } } : {}),
     });
     const receipt = await publicClient.waitForTransactionReceipt({ hash: transactionHash, timeout: 120_000 });
-    if (receipt.status !== 'success') throw new Error('The sponsored AUSD transfer reverted on Monad testnet.');
+    if (receipt.status !== 'success') throw new Error(`The sponsored ${token} transfer reverted on Monad testnet.`);
     return { transactionHash, accountAddress: kernelAccount.address, blockNumber: receipt.blockNumber };
   } finally {
     signer.session.end();
@@ -499,16 +506,18 @@ export async function sendSponsoredInstantSettlementSwap(
   amount: string,
   acceptedQuote: { pairAddress: string; amountInRaw?: string; amountOutRaw: string; checkedAt: string; quoteMode?: 'exact-input' | 'exact-output' },
   allowSelfRecipient = false,
+  inputSymbol: WalletToken = 'AUSD',
+  outputSymbol: WalletToken = 'CTK',
 ): Promise<SponsoredSettlementResult> {
   if (!isAddress(recipient, { strict: false })) throw new Error('Enter a valid recipient wallet address.');
   if (!allowSelfRecipient && recipient.toLowerCase() === account.address.toLowerCase()) throw new Error('Choose a recipient other than your own wallet.');
   if (!isAddress(acceptedQuote.pairAddress, { strict: false })) throw new Error('The reviewed Agora pair address is invalid.');
   if (!/^\d+$/.test(acceptedQuote.amountOutRaw) || BigInt(acceptedQuote.amountOutRaw) <= 0n) {
-    throw new Error('The reviewed CTK quote is invalid. Return to the send form and refresh it.');
+    throw new Error(`The reviewed ${outputSymbol} quote is invalid. Return to the swap form and refresh it.`);
   }
   const quoteMode = acceptedQuote.quoteMode ?? 'exact-input';
   if (quoteMode === 'exact-output' && (!acceptedQuote.amountInRaw || !/^\d+$/.test(acceptedQuote.amountInRaw) || BigInt(acceptedQuote.amountInRaw) <= 0n)) {
-    throw new Error('The reviewed maximum AUSD input is invalid. Return to the swap form and refresh the quote.');
+    throw new Error(`The reviewed maximum ${inputSymbol} input is invalid. Return to the swap form and refresh the quote.`);
   }
   const quoteTime = Date.parse(acceptedQuote.checkedAt);
   if (!Number.isFinite(quoteTime) || Date.now() - quoteTime > 5 * 60_000) {
@@ -519,8 +528,8 @@ export async function sendSponsoredInstantSettlementSwap(
   if (!/^https:\/\//i.test(bundlerUrl)) throw new Error('The Pimlico bundler URL must use HTTPS.');
 
   let requestedAmount: bigint;
-  try { requestedAmount = parseUnits(amount, quoteMode === 'exact-input' ? 6 : 18); }
-  catch { throw new Error(quoteMode === 'exact-input' ? 'Enter a valid AUSD amount with at most six decimal places.' : 'Enter a valid CTK amount with at most eighteen decimal places.'); }
+  try { requestedAmount = parseUnits(amount, quoteMode === 'exact-input' ? WALLET_TOKENS[inputSymbol].decimals : WALLET_TOKENS[outputSymbol].decimals); }
+  catch { throw new Error(`Enter a valid ${quoteMode === 'exact-input' ? inputSymbol : outputSymbol} amount with the supported decimal places.`); }
   if (requestedAmount <= 0n) throw new Error('Enter an amount greater than zero.');
 
   const signer = await getMeraViemSigner(account);
@@ -532,7 +541,7 @@ export async function sendSponsoredInstantSettlementSwap(
 
     // Requote immediately before signing. The exact amount shown in review is
     // the minimum output; a worse quote requires the user to review again.
-    const freshQuote = await simulateSettlementSwap(amount, kernelAccount.address, quoteMode);
+    const freshQuote = await simulateTokenSwap(inputSymbol, outputSymbol, amount, kernelAccount.address, quoteMode);
     const acceptedAmountInRaw = quoteMode === 'exact-input'
       ? requestedAmount.toString()
       : BigInt(acceptedQuote.amountInRaw!).toString();
@@ -545,20 +554,20 @@ export async function sendSponsoredInstantSettlementSwap(
     const pairAddress = freshQuote.pairAddress;
     const amountInMax = quoteMode === 'exact-input' ? requestedAmount : BigInt(acceptedAmountInRaw);
     const [decimals, balance, approved, allowance, token0, token1, whitelisterCode] = await Promise.all([
-      publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'decimals' }),
-      publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'balanceOf', args: [kernelAccount.address] }),
+      publicClient.readContract({ address: WALLET_TOKENS[inputSymbol].address, abi: balanceAbi, functionName: 'decimals' }),
+      publicClient.readContract({ address: WALLET_TOKENS[inputSymbol].address, abi: balanceAbi, functionName: 'balanceOf', args: [kernelAccount.address] }),
       publicClient.readContract({ address: pairAddress, abi: pairAbi, functionName: 'hasRole', args: ['APPROVED_SWAPPER', kernelAccount.address] }),
-      publicClient.readContract({ address: AUSD_ADDRESS, abi: ausdAbi, functionName: 'allowance', args: [kernelAccount.address, pairAddress] }),
+      publicClient.readContract({ address: WALLET_TOKENS[inputSymbol].address, abi: ausdAbi, functionName: 'allowance', args: [kernelAccount.address, pairAddress] }),
       publicClient.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token0' }),
       publicClient.readContract({ address: pairAddress, abi: pairAbi, functionName: 'token1' }),
       publicClient.getBytecode({ address: AGORA_TESTNET_WHITELISTER }),
     ]);
-    if (decimals !== 6) throw new Error(`Monad AUSD reports ${decimals} decimals; expected 6.`);
-    if (balance < amountInMax) throw new Error(`Insufficient AUSD balance. This smart account holds ${formatUnits(balance, decimals)} AUSD.`);
+    if (decimals !== WALLET_TOKENS[inputSymbol].decimals) throw new Error(`Monad ${inputSymbol} reports ${decimals} decimals; expected ${WALLET_TOKENS[inputSymbol].decimals}.`);
+    if (balance < amountInMax) throw new Error(`Insufficient ${inputSymbol} balance. This smart account holds ${formatUnits(balance, decimals)} ${inputSymbol}.`);
     if (!whitelisterCode || whitelisterCode === '0x') throw new Error('Agora’s Monad testnet whitelister is not deployed at the documented address.');
-    if (token0.toLowerCase() !== MONAD_TESTNET.ctkAddress.toLowerCase() ||
-        token1.toLowerCase() !== MONAD_TESTNET.ausdAddress.toLowerCase()) {
-      throw new Error('The Agora pair token order changed. Return to the send form and request a new quote.');
+    if (![token0.toLowerCase(), token1.toLowerCase()].includes(WALLET_TOKENS[inputSymbol].address.toLowerCase()) ||
+        ![token0.toLowerCase(), token1.toLowerCase()].includes(WALLET_TOKENS[outputSymbol].address.toLowerCase())) {
+      throw new Error('The swap pair token order changed. Return to the swap form and request a new quote.');
     }
 
     const calls: { to: Address; value: bigint; data: `0x${string}` }[] = [];
@@ -571,7 +580,7 @@ export async function sendSponsoredInstantSettlementSwap(
     }
     if (allowance < amountInMax) {
       calls.push({
-        to: AUSD_ADDRESS,
+        to: WALLET_TOKENS[inputSymbol].address,
         value: 0n,
         data: encodeFunctionData({ abi: ausdAbi, functionName: 'approve', args: [pairAddress, amountInMax] }),
       });
@@ -581,12 +590,12 @@ export async function sendSponsoredInstantSettlementSwap(
       ? encodeFunctionData({
           abi: pairAbi,
           functionName: 'swapExactTokensForTokens',
-          args: [requestedAmount, BigInt(acceptedQuote.amountOutRaw), [MONAD_TESTNET.ausdAddress, MONAD_TESTNET.ctkAddress], recipient as Address, swapDeadline],
+          args: [requestedAmount, BigInt(acceptedQuote.amountOutRaw), [WALLET_TOKENS[inputSymbol].address, WALLET_TOKENS[outputSymbol].address], recipient as Address, swapDeadline],
         })
       : encodeFunctionData({
           abi: pairAbi,
           functionName: 'swapTokensForExactTokens',
-          args: [requestedAmount, amountInMax, [MONAD_TESTNET.ausdAddress, MONAD_TESTNET.ctkAddress], recipient as Address, swapDeadline],
+          args: [requestedAmount, amountInMax, [WALLET_TOKENS[inputSymbol].address, WALLET_TOKENS[outputSymbol].address], recipient as Address, swapDeadline],
         });
     calls.push({ to: pairAddress, value: 0n, data: swapData });
 
@@ -614,8 +623,9 @@ export async function sendSponsoredInstantSettlementSwap(
       try {
         const event = decodeEventLog({ abi: pairAbi, eventName: 'Swap', data: log.data, topics: log.topics });
         if (event.args.to.toLowerCase() !== recipient.toLowerCase()) continue;
-        amountOut = event.args.amount0Out;
-        actualAmountIn = event.args.amount1In;
+        const inputIsToken0 = token0.toLowerCase() === WALLET_TOKENS[inputSymbol].address.toLowerCase();
+        amountOut = inputIsToken0 ? event.args.amount1Out : event.args.amount0Out;
+        actualAmountIn = inputIsToken0 ? event.args.amount0In : event.args.amount1In;
         break;
       } catch {
         // Other pair events in the same transaction are ignored.
@@ -629,9 +639,10 @@ export async function sendSponsoredInstantSettlementSwap(
       accountAddress: kernelAccount.address,
       blockNumber: receipt.blockNumber,
       pairAddress,
-      amountIn: formatUnits(actualAmountIn, 6),
+      amountIn: formatUnits(actualAmountIn, WALLET_TOKENS[inputSymbol].decimals),
       amountOut: formatUnits(amountOut, freshQuote.outputDecimals),
-      outputSymbol: 'CTK',
+      inputSymbol,
+      outputSymbol,
     };
   } finally {
     signer.session.end();

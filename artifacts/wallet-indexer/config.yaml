@@ -1,13 +1,24 @@
 # yaml-language-server: $schema=./node_modules/envio/evm.schema.json
 name: ausd-wallet-activity
-description: AUSD and CTK token transfers on Monad testnet
+description: AUSD, CTK, and savings pocket activity on Monad testnet
 contracts:
   - name: WalletToken
     events:
       - event: "Transfer(address indexed from, address indexed to, uint256 value)"
+  - name: SavingsPockets
+    events:
+      - event: "PocketCreated(address indexed owner, bytes32 indexed pocketId)"
+      - event: "AutoSaveRateUpdated(address indexed owner, bytes32 indexed pocketId, uint16 bps)"
+      - event: "Deposited(address indexed owner, bytes32 indexed pocketId, uint256 amount)"
+      - event: "Withdrawn(address indexed owner, bytes32 indexed pocketId, address indexed recipient, uint256 amount)"
+      - event: "PaymentSent(address indexed owner, bytes32 indexed pocketId, address indexed recipient, uint256 paymentAmount, uint256 savedAmount)"
+      - event: "Gifted(address indexed donor, address indexed recipientOwner, bytes32 indexed pocketId, uint256 amount)"
+      - event: "PersonGifted(address indexed donor, address indexed recipientOwner, uint256 amount)"
+      - event: "GiftAllocated(address indexed recipientOwner, bytes32 indexed pocketId, uint256 amount)"
+      - event: "GiftWithdrawn(address indexed recipientOwner, address indexed recipient, uint256 amount)"
 chains:
   - id: 10143
-    start_block: latest
+    start_block: 69501034
     rpc:
       - url: https://testnet-rpc.monad.xyz
     contracts:
@@ -15,3 +26,6 @@ chains:
         address:
           - "0xa9012a055bd4e0eDfF8Ce09f960291C09D5322dC"
           - "0x7BEb5D9DB0d85cBEa543C04f0dE8c23c2176cd9D"
+      - name: SavingsPockets
+        address:
+          - "0xff17b04d8d71698295586678f6a6b7452587cf14"

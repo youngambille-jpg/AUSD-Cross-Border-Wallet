@@ -8,3 +8,18 @@ type TokenTransfer {
   blockNumber: BigInt!
   timestamp: BigInt!
 }
+
+type SavingsActivity {
+  id: ID!
+  kind: String! @index
+  owner: String! @index
+  pocketId: String @index
+  counterparty: String
+  amount: BigInt
+  paymentAmount: BigInt
+  savedAmount: BigInt
+  autoSaveBps: Int
+  transactionHash: String!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}

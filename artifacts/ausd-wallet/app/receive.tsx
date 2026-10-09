@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import QRCode from 'react-native-qrcode-svg';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
+import { TRANSFER_TOKENS, type WalletToken } from '@/services/tokens';
 import {
   BackButton,
   Body,
@@ -22,6 +23,7 @@ export default function ReceiveScreen() {
   const colors = useColors();
   const { profile } = useWallet();
   const [amount, setAmount] = useState('');
+  const [token, setToken] = useState<WalletToken>('AUSD');
   const [copied, setCopied] = useState(false);
   const hasAddress = profile?.mode === 'mera' && Boolean(profile.address);
   const amountIsValid = !amount || (/^\d+(\.\d{1,6})?$/.test(amount) && Number(amount) > 0);
@@ -32,10 +34,11 @@ export default function ReceiveScreen() {
       isTripleSlashed: true,
       queryParams: {
         recipient: profile.address,
+        token,
         ...(amount ? { amount } : {}),
       },
     });
-  }, [amount, amountIsValid, profile?.address]);
+  }, [amount, amountIsValid, profile?.address, token]);
 
   async function copyAddress() {
     if (!profile?.address) return;
@@ -46,7 +49,7 @@ export default function ReceiveScreen() {
 
   async function shareRequest() {
     if (!requestUrl) return;
-    const paymentDescription = amount ? `Request ${amount} AUSD on Monad testnet` : 'Request AUSD on Monad testnet';
+    const paymentDescription = amount ? `Request ${amount} ${token} on Monad testnet` : `Request ${token} on Monad testnet`;
     await Share.share({
       message: `${paymentDescription}\n${requestUrl}`,
       url: requestUrl,
@@ -79,6 +82,14 @@ export default function ReceiveScreen() {
             error={amountIsValid ? undefined : 'Enter an amount greater than zero, with up to six decimals.'}
           />
 
+          <View style={styles.tokenRow}>
+            {TRANSFER_TOKENS.map((option) => (
+              <Pressable key={option} onPress={() => { setToken(option); setAmount(''); }} style={[styles.tokenOption, { backgroundColor: token === option ? colors.primary : colors.secondary }]}>
+                <Text style={[styles.tokenText, { color: token === option ? colors.primaryForeground : colors.foreground }]}>{option}</Text>
+              </Pressable>
+            ))}
+          </View>
+
           <Card style={styles.requestCard}>
             <View style={styles.qrFrame}>
               {requestUrl ? (
@@ -93,9 +104,9 @@ export default function ReceiveScreen() {
               ) : null}
             </View>
             <Text style={[styles.requestAmount, { color: colors.foreground }]}>
-              {amount ? `${amount} AUSD` : 'Any amount'}
+              {amount ? `${amount} ${token}` : `Any amount · ${token}`}
             </Text>
-            <Text style={[styles.network, { color: colors.mutedForeground }]}>AUSD · Monad testnet</Text>
+            <Text style={[styles.network, { color: colors.mutedForeground }]}>{token} · Monad testnet</Text>
           </Card>
 
           <View style={styles.actions}>
@@ -125,6 +136,9 @@ const styles = StyleSheet.create({
   requestAmount: { marginTop: 5, fontSize: 20, letterSpacing: -0.5, fontFamily: 'Inter_600SemiBold' },
   network: { fontSize: 11, fontFamily: 'Inter_500Medium' },
   actions: { gap: 9 },
+  tokenRow: { flexDirection: 'row', gap: 8 },
+  tokenOption: { minHeight: 38, paddingHorizontal: 18, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tokenText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   addressCard: { gap: 7, padding: 14 },
   addressLabel: { fontSize: 9, letterSpacing: 0.8, fontFamily: 'Inter_600SemiBold' },
   address: { fontSize: 11, lineHeight: 17, fontFamily: 'Inter_500Medium' },
