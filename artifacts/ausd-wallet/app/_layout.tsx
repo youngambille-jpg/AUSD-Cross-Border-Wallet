@@ -27,7 +27,7 @@ function RootLayoutNav() {
 
   useEffect(() => {
     if (!ready) return;
-    const isProtectedRoute = ['(tabs)', 'review', 'success', 'receive', 'scan', 'swap', 'aurora-deposit', 'savings-goals'].includes(segments[0] ?? '');
+    const isProtectedRoute = ['(tabs)', 'review', 'success', 'receive', 'scan', 'swap', 'aurora-deposit', 'savings-goals', 'contacts'].includes(segments[0] ?? '');
     if (isProtectedRoute && (!profile || !authenticated)) router.replace('/');
   }, [ready, profile, authenticated, segments]);
 
@@ -43,6 +43,7 @@ function RootLayoutNav() {
       <Stack.Screen name="swap" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="aurora-deposit" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="savings-goals" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="contacts" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="scan" options={{ headerShown: false, animation: 'slide_from_right' }} />
     </Stack>
   );

@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
   quickIcon: { width: 49, height: 49, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   quickLabel: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   drawerOverlay: { flex: 1, justifyContent: 'flex-end' },
-  drawerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(16, 18, 24, 0.48)' },
+  drawerBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(16, 18, 24, 0.48)' },
   actionDrawer: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 22, paddingBottom: 28, overflow: 'hidden' },
   drawerHandleArea: { height: 38, alignItems: 'center', justifyContent: 'center' },
   drawerHandle: { width: 38, height: 4, borderRadius: 3 },

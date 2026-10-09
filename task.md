@@ -13,16 +13,20 @@
    - [x] Add private savings goal creation, progress tracking, balance-based allocation checks, and encrypted local backup/restore.
    - [x] Encrypt goal state as non-wallet app data with a Mera PRF-derived secret vault; only the encrypted vault is persisted.
    - [x] Start a Hardhat contract package for funded AUSD pockets controlled by the user's Mera-owned smart account.
-   - [x] Define the first contract flow: create pocket, deposit, withdraw, send with percentage auto-save, and gift to an existing pocket.
-   - [ ] Compile/review the contract, then add focused contract tests before deployment.
+   - [x] Define the first contract flow: create pocket, deposit, withdraw, send with percentage auto-save, gift to a person, and gift to an existing goal pocket.
+   - [x] Compile the contract and add focused integration tests for auto-save, person gifts, goal gifts, and withdrawals.
+   - [x] Deploy the fee-free savings contract to Monad testnet; deployment address and receipt are recorded with the contract package.
    - [ ] Integrate the contract with sponsored Mera UserOperations and show payment, auto-save, and total debit before signing.
+   - [x] Add a Mera-encrypted contacts book mapping user-chosen names to smart-account addresses, with backup/restore and send prefill.
+   - [ ] Reuse saved contacts across transfers, bill splits, gifts, and tips.
+   - [ ] Add shareable goal links/codes that identify a recipient account and pocket so contacts can fund a specific goal.
    - [ ] Verify create, reopen, and backup restore with the same passkey on a second physical device/browser profile.
    - [ ] Replace tracking-only savings contributions with on-chain deposits once the contract is reviewed and wired into the app.
    - [ ] Add enforced withdrawal/lock rules on-chain only if product requirements call for them.
 3. [ ] Add stablecoin swaps on Monad with a quote, minimum received amount, and clear confirmation.
 4. [ ] Add Aurora Intents for cross-chain deposits into Monad, with route quotes and transfer status.
 5. [ ] Extend Envio activity indexing for supported tokens and savings accounts.
-6. [ ] Add username-to-address resolution for in-app transfers, with recipient confirmation before signing.
+6. [ ] Add reusable in-app contacts for transfers and social payments, with recipient confirmation before signing.
 
 ## Product Focus
 

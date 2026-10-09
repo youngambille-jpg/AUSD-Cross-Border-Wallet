@@ -140,6 +140,12 @@ export default function ProfileScreen() {
         </Card>
       ) : null}
 
+      <Card style={styles.detailCard}>
+        <Text style={[styles.cardTitle, { color: colors.foreground }]}>Private contacts</Text>
+        <Text style={[styles.metricCaption, { color: colors.mutedForeground }]}>Save familiar names for smart-account addresses. Your address book is encrypted with Mera and stays private to you.</Text>
+        <PrimaryButton label="Manage contacts" icon="users" secondary onPress={() => router.push('/contacts')} />
+      </Card>
+
       <InlineNotice icon="info" tone="warning">
         Direct AUSD transfers and Agora swaps can submit sponsored transactions using test tokens on Monad testnet. Fiat onramp and offramp, card issuing, and cross-chain transfers are not connected yet.
       </InlineNotice>

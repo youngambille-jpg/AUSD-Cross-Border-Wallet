@@ -26,6 +26,7 @@ contract SavingsPockets {
     }
 
     mapping(address owner => mapping(bytes32 pocketId => Pocket)) private pockets;
+    mapping(address recipient => uint256 balance) public unallocatedGiftBalance;
     bool private entered;
 
     error InvalidAddress();
@@ -54,6 +55,9 @@ contract SavingsPockets {
         bytes32 indexed pocketId,
         uint256 amount
     );
+    event PersonGifted(address indexed donor, address indexed recipientOwner, uint256 amount);
+    event GiftAllocated(address indexed recipientOwner, bytes32 indexed pocketId, uint256 amount);
+    event GiftWithdrawn(address indexed recipientOwner, address indexed recipient, uint256 amount);
 
     constructor(address tokenAddress) {
         if (tokenAddress == address(0) || tokenAddress.code.length == 0) revert InvalidAddress();
@@ -135,6 +139,37 @@ contract SavingsPockets {
         _safeTransferFrom(msg.sender, address(this), amount);
         recipientPocket.balance += amount;
         emit Gifted(msg.sender, recipientOwner, pocketId, amount);
+    }
+
+    /** @notice Gift AUSD to a person without requiring them to have a pocket yet. */
+    function giftToPerson(address recipientOwner, uint256 amount) external nonReentrant {
+        if (recipientOwner == address(0) || recipientOwner == msg.sender) revert InvalidAddress();
+        if (amount == 0) revert InvalidAmount();
+        _safeTransferFrom(msg.sender, address(this), amount);
+        unallocatedGiftBalance[recipientOwner] += amount;
+        emit PersonGifted(msg.sender, recipientOwner, amount);
+    }
+
+    /** @notice Move a person's unallocated gifts into one of their own pockets. */
+    function allocateGiftToPocket(bytes32 pocketId, uint256 amount) external {
+        if (amount == 0) revert InvalidAmount();
+        Pocket storage pocket = _pocket(msg.sender, pocketId);
+        uint256 giftBalance = unallocatedGiftBalance[msg.sender];
+        if (giftBalance < amount) revert InsufficientPocketBalance();
+        unallocatedGiftBalance[msg.sender] = giftBalance - amount;
+        pocket.balance += amount;
+        emit GiftAllocated(msg.sender, pocketId, amount);
+    }
+
+    /** @notice Withdraw person-level gifts without first creating a savings pocket. */
+    function withdrawGift(uint256 amount, address recipient) external nonReentrant {
+        if (recipient == address(0)) revert InvalidAddress();
+        if (amount == 0) revert InvalidAmount();
+        uint256 giftBalance = unallocatedGiftBalance[msg.sender];
+        if (giftBalance < amount) revert InsufficientPocketBalance();
+        unallocatedGiftBalance[msg.sender] = giftBalance - amount;
+        _safeTransfer(recipient, amount);
+        emit GiftWithdrawn(msg.sender, recipient, amount);
     }
 
     function getPocket(address owner, bytes32 pocketId)

@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "compile": "hardhat compile"
+    "compile": "hardhat compile",
+    "test": "hardhat test solidity",
+    "deploy:testnet": "hardhat compile && hardhat run scripts/deploy.ts --network monadTestnet"
   },
   "devDependencies": {
-    "hardhat": "^3.0.0"
+    "hardhat": "^3.0.0",
+    "viem": "^2.57.3"
   }
 }

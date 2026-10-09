@@ -11,7 +11,7 @@ import {
   PanResponder,
   useWindowDimensions,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { isAddress } from 'viem';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,11 +25,13 @@ const money = (amount: number) =>
   amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 
 export default function SendDrawer() {
+  const params = useLocalSearchParams<{ recipient?: string; recipientName?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const { profile, balance: demoBalance } = useWallet();
   const [recipient, setRecipient] = useState('');
+  const [recipientName, setRecipientName] = useState('');
   const [amount, setAmount] = useState('');
   const [availableBalance, setAvailableBalance] = useState<number | null>(null);
   const [balanceError, setBalanceError] = useState('');
@@ -48,6 +50,13 @@ export default function SendDrawer() {
       setDrawerOffset(0);
     },
   });
+
+  useEffect(() => {
+    if (params.recipient) {
+      setRecipient(params.recipient);
+      setRecipientName(params.recipientName ?? '');
+    }
+  }, [params.recipient, params.recipientName]);
 
   useEffect(() => {
     if (profile?.mode !== 'mera' || !profile.address) return;
@@ -114,7 +123,7 @@ export default function SendDrawer() {
         router.push({
           pathname: '/review',
           params: {
-            mode: 'settlement', recipient: recipient.trim(), amount,
+            mode: 'settlement', recipient: recipient.trim(), recipientName, amount,
             quoteOutput: freshQuote.amountOut,
             quoteOutputRaw: freshQuote.amountOutRaw,
             quoteCheckedAt: freshQuote.checkedAt,
@@ -127,7 +136,7 @@ export default function SendDrawer() {
       }
       return;
     }
-    router.push({ pathname: '/review', params: { mode: 'direct', recipient: recipient.trim(), amount } });
+    router.push({ pathname: '/review', params: { mode: 'direct', recipient: recipient.trim(), recipientName, amount } });
   }
 
   return (
@@ -231,11 +240,14 @@ export default function SendDrawer() {
             ) : null}
 
             <View style={styles.recipientBlock}>
-              <Text style={[styles.label, { color: colors.mutedForeground }]}>TO</Text>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>{recipientName ? `TO · ${recipientName}` : 'TO'}</Text>
               <TextInput
                 accessibilityLabel="Recipient wallet address"
                 value={recipient}
-                onChangeText={setRecipient}
+                onChangeText={(value) => {
+                  setRecipient(value);
+                  if (value.toLowerCase() !== params.recipient?.toLowerCase()) setRecipientName('');
+                }}
                 placeholder="Wallet address"
                 placeholderTextColor={colors.mutedForeground}
                 autoCapitalize="none"

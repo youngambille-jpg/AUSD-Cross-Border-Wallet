@@ -23,7 +23,7 @@ import {
 export default function ReviewScreen() {
   const colors = useColors();
   const params = useLocalSearchParams<{
-    mode?: string; recipient?: string; amount?: string; quoteOutput?: string;
+    mode?: string; recipient?: string; recipientName?: string; amount?: string; quoteOutput?: string;
     swapAmount?: string; quoteMode?: string; quoteInputRaw?: string;
     quoteOutputRaw?: string; quoteCheckedAt?: string; pairAddress?: string; purchaseFeeRate?: string;
   }>();
@@ -32,6 +32,7 @@ export default function ReviewScreen() {
   const [error, setError] = useState('');
   const amount = Number(params.amount ?? 0);
   const recipient = typeof params.recipient === 'string' ? params.recipient.trim() : '';
+  const recipientName = typeof params.recipientName === 'string' ? params.recipientName.trim() : '';
   const settlement = params.mode === 'settlement' || params.mode === 'agora-swap';
   const swapOnly = params.mode === 'agora-swap';
   const quoteOutput = typeof params.quoteOutput === 'string' ? params.quoteOutput : '';
@@ -153,7 +154,7 @@ export default function ReviewScreen() {
       <Card style={styles.detailsCard}>
         <View style={styles.detailRow}>
           <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>{swapOnly ? 'OUTPUT WALLET' : 'TO'}</Text>
-          <Text selectable style={[styles.recipient, { color: colors.foreground }]}>{recipient}</Text>
+          <Text selectable style={[styles.recipient, { color: colors.foreground }]}>{recipientName ? `${recipientName} · ${recipient}` : recipient}</Text>
         </View>
         <View style={[styles.rule, { backgroundColor: colors.border }]} />
         <View style={styles.detailRow}>
