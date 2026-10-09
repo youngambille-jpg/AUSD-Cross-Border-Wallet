@@ -26,11 +26,18 @@ export default function SimulationSuccessScreen() {
     blockNumber?: string;
     receiveCurrency?: string;
     settlement?: string;
+    autoSave?: string;
+    goalName?: string;
+    paymentAmount?: string;
+    autoSavedAmount?: string;
+    totalDebit?: string;
+    historyWarning?: string;
   }>();
   const amount = Number(params.amount ?? 0);
   const receiveAmount = Number(params.receiveAmount ?? amount);
   const receiveCurrency = typeof params.receiveCurrency === 'string' ? params.receiveCurrency : 'AUSD';
   const settledThroughAgora = params.settlement === 'agora';
+  const autoSaveConfirmed = params.autoSave === 'true';
   const transactionHash = params.transactionHash;
   const explorerUrl = transactionHash
     ? `https://testnet.monadvision.com/tx/${transactionHash}`
@@ -45,9 +52,11 @@ export default function SimulationSuccessScreen() {
         <View style={[styles.confirmedDot, { backgroundColor: colors.primary }]} />
         <Text style={[styles.confirmedText, { color: colors.foreground }]}>CONFIRMED ON MONAD TESTNET</Text>
       </View>
-      <Title>{settledThroughAgora ? 'Settlement confirmed' : 'Transfer confirmed'}</Title>
+      <Title>{autoSaveConfirmed ? 'Payment + savings confirmed' : settledThroughAgora ? 'Settlement confirmed' : 'Transfer confirmed'}</Title>
       <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-        {settledThroughAgora
+        {autoSaveConfirmed
+          ? 'The recipient payment and savings allocation were included in one confirmed Monad testnet transaction.'
+          : settledThroughAgora
           ? 'The Agora AUSD-to-CTK swap was included in a confirmed sponsored transaction.'
           : 'Your AUSD transfer was included in a confirmed sponsored transaction.'}
       </Text>
@@ -62,6 +71,19 @@ export default function SimulationSuccessScreen() {
             {receiveAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} {receiveCurrency}
           </Text>
         </View>
+        {autoSaveConfirmed ? (
+          <View style={[styles.receivePanel, { backgroundColor: colors.secondary }]}>
+            <Text style={[styles.receivesLabel, { color: colors.mutedForeground }]}>
+              AUTO-SAVED TO {params.goalName ?? 'SAVINGS POCKET'}
+            </Text>
+            <Text style={[styles.receivesValue, { color: colors.foreground }]}>
+              {Number(params.autoSavedAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} AUSD
+            </Text>
+            <Text style={[styles.reference, { color: colors.mutedForeground }]}>
+              Total wallet debit: {Number(params.totalDebit ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} AUSD
+            </Text>
+          </View>
+        ) : null}
         <View style={[styles.receiptDivider, { backgroundColor: colors.border }]} />
         <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>RECIPIENT</Text>
         <Text selectable style={[styles.to, { color: colors.foreground }]}>{params.recipient ?? 'Recipient unavailable'}</Text>
@@ -85,7 +107,11 @@ export default function SimulationSuccessScreen() {
       </Card>
 
       <InlineNotice icon="shield">
-        {settledThroughAgora
+        {params.historyWarning
+          ? params.historyWarning
+          : autoSaveConfirmed
+          ? 'Both transfers were performed atomically by the SavingsPockets contract. Testnet AUSD moved; this has no real-world monetary value.'
+          : settledThroughAgora
           ? 'CTK is a testnet mock payout token. This confirms the on-chain swap only; it is not a fiat payout. Receipt saved to Activity on this device.'
           : 'Testnet transaction only. Receipt saved to Activity on this device.'}
       </InlineNotice>

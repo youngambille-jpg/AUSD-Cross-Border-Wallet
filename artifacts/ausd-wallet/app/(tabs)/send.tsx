@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { isAddress } from 'viem';
 import { useColors } from '@/hooks/useColors';
 import { useWallet } from '@/state/wallet-context';
 import { getAUSDBalance } from '@/services/passkey';
+import { calculateAutoSaveBreakdown } from '@/services/savings-pockets';
 import {
   Body,
   Card,
@@ -22,14 +24,34 @@ const formatAmount = (amount: number, digits = 2) =>
 export default function SendScreen() {
   const colors = useColors();
   const { profile, balance } = useWallet();
-  const params = useLocalSearchParams<{ recipient?: string; amount?: string }>();
+  const params = useLocalSearchParams<{
+    recipient?: string;
+    amount?: string;
+    pocketId?: string;
+    autoSaveBps?: string;
+    goalName?: string;
+  }>();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [onchainBalance, setOnchainBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState('');
+  const pocketId = typeof params.pocketId === 'string' ? params.pocketId : '';
+  const goalName = typeof params.goalName === 'string' ? params.goalName : '';
+  const autoSaveBps = typeof params.autoSaveBps === 'string' ? Number(params.autoSaveBps) : 0;
+  const hasAutoSave = Boolean(pocketId && goalName && Number.isInteger(autoSaveBps) && autoSaveBps > 0);
+  const autoSaveRequestPresent = Boolean(params.pocketId || params.goalName || params.autoSaveBps);
+  const invalidAutoSaveRequest = autoSaveRequestPresent && !hasAutoSave;
   const parsedAmount = Number(amount);
   const displayedBalance = profile?.mode === 'mera' ? Number(onchainBalance ?? 0) : balance;
+  let autoSaveBreakdown: ReturnType<typeof calculateAutoSaveBreakdown> | null = null;
+  if (hasAutoSave && /^\d+(\.\d{1,6})?$/.test(amount)) {
+    try {
+      autoSaveBreakdown = calculateAutoSaveBreakdown(amount, autoSaveBps);
+    } catch {
+      autoSaveBreakdown = null;
+    }
+  }
 
   useEffect(() => {
     if (typeof params.recipient === 'string') setRecipient(params.recipient);
@@ -52,11 +74,25 @@ export default function SendScreen() {
     if (!isAddress(recipient.trim(), { strict: false })) return setError('Enter a valid recipient wallet address.');
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return setError('Enter an amount greater than zero.');
     if (!/^\d+(\.\d{1,6})?$/.test(amount)) return setError('AUSD supports up to six decimal places.');
+    if (invalidAutoSaveRequest) return setError('The savings pocket details are invalid. Return to Savings Goals and select the pocket again.');
     if (profile?.mode === 'mera' && onchainBalance === null) return setError(balanceError || 'Wait for your Monad testnet balance to load.');
-    if (parsedAmount > displayedBalance) return setError(`Your available balance is ${formatAmount(displayedBalance)} AUSD.`);
+    if (hasAutoSave && !autoSaveBreakdown) return setError('The auto-save amount could not be calculated. Return to Savings Goals and select the pocket again.');
+    const totalDebit = autoSaveBreakdown ? Number(autoSaveBreakdown.totalDebit) : parsedAmount;
+    if (totalDebit > displayedBalance) {
+      return setError(`You need ${formatAmount(totalDebit)} AUSD including savings. Your available balance is ${formatAmount(displayedBalance)} AUSD.`);
+    }
     router.push({
       pathname: '/review',
-      params: { recipient: recipient.trim(), amount },
+      params: {
+        recipient: recipient.trim(),
+        amount,
+        ...(hasAutoSave ? {
+          mode: 'autosave',
+          pocketId,
+          goalName,
+          autoSaveBps: String(autoSaveBps),
+        } : {}),
+      },
     });
   }
 
@@ -111,6 +147,30 @@ export default function SendScreen() {
         </Text>
       </Card>
 
+      {hasAutoSave ? (
+        <Card style={styles.autoSaveCard}>
+          <View style={styles.autoSaveHeader}>
+            <Feather name="target" size={17} color={colors.primary} />
+            <Text style={[styles.destinationTitle, { color: colors.foreground }]}>
+              Save toward {goalName}
+            </Text>
+          </View>
+          <Text style={[styles.rateText, { color: colors.mutedForeground }]}>
+            {autoSaveBps / 100}% of the payment is added to this on-chain pocket.
+          </Text>
+          {autoSaveBreakdown ? (
+            <>
+              <AutoSaveLine label="Recipient payment" value={`${formatAmount(Number(autoSaveBreakdown.paymentAmount), 6)} AUSD`} />
+              <AutoSaveLine label="Auto-save" value={`${formatAmount(Number(autoSaveBreakdown.savedAmount), 6)} AUSD`} />
+              <View style={[styles.totalLine, { borderTopColor: colors.border }]}>
+                <Text style={[styles.totalLabel, { color: colors.foreground }]}>Total AUSD debit</Text>
+                <Text style={[styles.totalValue, { color: colors.foreground }]}>{formatAmount(Number(autoSaveBreakdown.totalDebit), 6)} AUSD</Text>
+              </View>
+            </>
+          ) : null}
+        </Card>
+      ) : null}
+
       <View style={styles.destinationBlock}>
         <View style={styles.destinationHead}>
           <Text style={[styles.destinationTitle, { color: colors.foreground }]}>Recipient gets</Text>
@@ -136,7 +196,7 @@ export default function SendScreen() {
 
       {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
       <PrimaryButton
-        label="Review transfer"
+        label={hasAutoSave ? 'Review payment + savings' : 'Review transfer'}
         icon="arrow-right"
         onPress={continueToReview}
         testID="review-transfer"
@@ -171,4 +231,19 @@ const styles = StyleSheet.create({
   feeLabel: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   feeValue: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   error: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  autoSaveCard: { gap: 10, padding: 15 },
+  autoSaveHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  totalLine: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  totalLabel: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  totalValue: { fontSize: 12, fontFamily: 'Inter_700Bold' },
 });
+
+function AutoSaveLine({ label, value }: { label: string; value: string }) {
+  const colors = useColors();
+  return (
+    <View style={styles.feeRow}>
+      <Text style={[styles.feeLabel, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text style={[styles.feeValue, { color: colors.foreground }]}>{value}</Text>
+    </View>
+  );
+}

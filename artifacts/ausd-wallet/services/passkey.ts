@@ -16,6 +16,7 @@ import {
   isAddress,
   parseUnits,
   type Address,
+  type Hex,
 } from 'viem';
 import { entryPoint07Address } from 'viem/account-abstraction';
 import { createPaymasterClient } from 'viem/account-abstraction';
@@ -338,6 +339,62 @@ export interface SponsoredSettlementResult extends SponsoredTransferResult {
   amountIn: string;
   amountOut: string;
   outputSymbol: 'CTK';
+}
+
+export interface SponsoredCall {
+  to: Address;
+  data: Hex;
+}
+
+/**
+ * Submit a reviewed set of calls as one Pimlico-sponsored Kernel UserOperation.
+ * Callers must validate balances, contract state, and user-visible amounts first.
+ */
+export async function sendSponsoredCalls(
+  account: MeraPasskeyProfile,
+  calls: SponsoredCall[],
+) {
+  if (!calls.length) throw new Error('There are no contract calls to submit.');
+  const bundlerUrl = process.env.EXPO_PUBLIC_PIMLICO_BUNDLER_URL?.trim();
+  if (!bundlerUrl) throw new Error('Pimlico is not configured. Set EXPO_PUBLIC_PIMLICO_BUNDLER_URL and rebuild or restart the app.');
+  if (!/^https:\/\//i.test(bundlerUrl)) throw new Error('The Pimlico bundler URL must use HTTPS.');
+
+  const signer = await getMeraViemSigner(account);
+  try {
+    const kernelAccount = await createKernelAccount(signer.owner);
+    if (kernelAccount.address.toLowerCase() !== account.address.toLowerCase()) {
+      throw new Error('The passkey-derived smart account changed. Stop and restore the matching wallet before signing.');
+    }
+    const pimlicoClient = createPaymasterClient({ transport: http(bundlerUrl) });
+    const sponsorshipPolicyId = process.env.EXPO_PUBLIC_PIMLICO_POLICY_ID?.trim();
+    const smartAccountClient = createSmartAccountClient({
+      account: kernelAccount,
+      chain: MONAD_CHAIN,
+      client: publicClient,
+      bundlerTransport: http(bundlerUrl),
+      paymaster: pimlicoClient,
+      ...(sponsorshipPolicyId ? { paymasterContext: { sponsorshipPolicyId } } : {}),
+    });
+    const transactionHash = await smartAccountClient.sendTransaction({
+      calls: calls.map((call) => ({ ...call, value: 0n })),
+      ...(sponsorshipPolicyId ? { paymasterContext: { sponsorshipPolicyId } } : {}),
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: transactionHash,
+      timeout: 120_000,
+    });
+    if (receipt.status !== 'success') {
+      throw new Error('The sponsored savings operation reverted on Monad testnet.');
+    }
+    return {
+      transactionHash,
+      accountAddress: kernelAccount.address,
+      blockNumber: receipt.blockNumber,
+      logs: receipt.logs,
+    };
+  } finally {
+    signer.session.end();
+  }
 }
 
 export async function sendSponsoredAUSDTransfer(

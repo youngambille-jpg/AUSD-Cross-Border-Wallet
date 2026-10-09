@@ -1,0 +1,1 @@
+- [Wallet tabs and Savings scope](wallet-savings-scope.md) — Savings is the main pockets/gifts/shared-pocket area; Yield and Settings are later phases.

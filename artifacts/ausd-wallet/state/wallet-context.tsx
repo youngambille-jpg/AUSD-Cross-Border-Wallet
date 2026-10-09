@@ -35,6 +35,11 @@ export interface Transfer {
   id: string;
   recipient: string;
   amount: number;
+  paymentAmount?: number;
+  savedAmount?: number;
+  totalDebited?: number;
+  savingsPocketId?: string;
+  savingsGoalName?: string;
   currency: string;
   receivedAmount: number;
   createdAt: string;
@@ -45,7 +50,7 @@ export interface Transfer {
   quoteSymbol?: string;
   transactionHash?: string;
   sponsored?: boolean;
-  settlementKind?: 'direct' | 'agora-instant-settlement';
+  settlementKind?: 'direct' | 'agora-instant-settlement' | 'savings-auto-save';
   receivedCurrency?: string;
 }
 

@@ -16,12 +16,15 @@
    - [x] Define the first contract flow: create pocket, deposit, withdraw, send with percentage auto-save, gift to a person, and gift to an existing goal pocket.
    - [x] Compile the contract and add focused integration tests for auto-save, person gifts, goal gifts, and withdrawals.
    - [x] Deploy the fee-free savings contract to Monad testnet; deployment address and receipt are recorded with the contract package.
-   - [ ] Integrate the contract with sponsored Mera UserOperations and show payment, auto-save, and total debit before signing.
+    - [x] Integrate the contract with sponsored Mera UserOperations and show payment, auto-save, and total debit before signing.
    - [x] Add a Mera-encrypted contacts book mapping user-chosen names to smart-account addresses, with backup/restore and send prefill.
    - [ ] Reuse saved contacts across transfers, bill splits, gifts, and tips.
    - [ ] Add shareable goal links/codes that identify a recipient account and pocket so contacts can fund a specific goal.
    - [ ] Verify create, reopen, and backup restore with the same passkey on a second physical device/browser profile.
-   - [ ] Replace tracking-only savings contributions with on-chain deposits once the contract is reviewed and wired into the app.
+    - [x] Replace active-goal tracking-only contributions with on-chain deposits; older unlinked goals remain clearly labeled as local-only.
+    - [ ] Make Savings a primary tab that lists the user's own on-chain pockets and supports deposits and payment auto-save.
+    - [ ] Let users gift a contact, fund another user's pocket from shared pocket details, and locally track shared pocket balances.
+    - [ ] Add Yield and Settings tabs in a later phase.
    - [ ] Add enforced withdrawal/lock rules on-chain only if product requirements call for them.
 3. [ ] Add stablecoin swaps on Monad with a quote, minimum received amount, and clear confirmation.
 4. [ ] Add Aurora Intents for cross-chain deposits into Monad, with route quotes and transfer status.

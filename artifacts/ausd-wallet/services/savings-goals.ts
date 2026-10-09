@@ -11,6 +11,9 @@ export interface SavingsGoal {
   target: number;
   saved: number;
   createdAt: string;
+  pocketId?: `0x${string}`;
+  autoSaveBps?: number;
+  localTracked?: number;
 }
 
 function validateGoals(decoded: unknown): SavingsGoal[] {
@@ -18,9 +21,14 @@ function validateGoals(decoded: unknown): SavingsGoal[] {
   return decoded.filter((goal): goal is SavingsGoal => {
     if (!goal || typeof goal !== 'object') return false;
     const value = goal as Partial<SavingsGoal>;
+    const validPocketId = value.pocketId === undefined || /^0x[0-9a-fA-F]{64}$/.test(value.pocketId);
+    const validAutoSaveBps = value.autoSaveBps === undefined
+      || (Number.isInteger(value.autoSaveBps) && value.autoSaveBps >= 0 && value.autoSaveBps <= 10_000);
+    const validLocalTracked = value.localTracked === undefined
+      || (Number.isFinite(value.localTracked) && value.localTracked >= 0);
     return typeof value.id === 'string' && typeof value.name === 'string'
       && Number.isFinite(value.target) && Number.isFinite(value.saved)
-      && typeof value.createdAt === 'string';
+      && typeof value.createdAt === 'string' && validPocketId && validAutoSaveBps && validLocalTracked;
   });
 }
 

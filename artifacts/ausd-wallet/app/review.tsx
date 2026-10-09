@@ -10,6 +10,10 @@ import {
   sendSponsoredInstantSettlementSwap,
   type SponsoredSettlementResult,
 } from '@/services/passkey';
+import {
+  calculateAutoSaveBreakdown,
+  payWithAutoSaveSponsored,
+} from '@/services/savings-pockets';
 import { MONAD_TESTNET } from '@/services/settlement';
 import {
   BackButton,
@@ -26,6 +30,7 @@ export default function ReviewScreen() {
     mode?: string; recipient?: string; recipientName?: string; amount?: string; quoteOutput?: string;
     swapAmount?: string; quoteMode?: string; quoteInputRaw?: string;
     quoteOutputRaw?: string; quoteCheckedAt?: string; pairAddress?: string; purchaseFeeRate?: string;
+    pocketId?: string; goalName?: string; autoSaveBps?: string;
   }>();
   const { profile, addTransfer } = useWallet();
   const [busy, setBusy] = useState(false);
@@ -35,6 +40,18 @@ export default function ReviewScreen() {
   const recipientName = typeof params.recipientName === 'string' ? params.recipientName.trim() : '';
   const settlement = params.mode === 'settlement' || params.mode === 'agora-swap';
   const swapOnly = params.mode === 'agora-swap';
+  const autoSave = params.mode === 'autosave';
+  const pocketId = typeof params.pocketId === 'string' ? params.pocketId : '';
+  const goalName = typeof params.goalName === 'string' ? params.goalName : '';
+  const autoSaveBps = typeof params.autoSaveBps === 'string' ? Number(params.autoSaveBps) : 0;
+  let autoSaveBreakdown: ReturnType<typeof calculateAutoSaveBreakdown> | null = null;
+  if (autoSave && Number.isFinite(amount) && amount > 0) {
+    try {
+      autoSaveBreakdown = calculateAutoSaveBreakdown(String(params.amount), autoSaveBps);
+    } catch {
+      autoSaveBreakdown = null;
+    }
+  }
   const quoteOutput = typeof params.quoteOutput === 'string' ? params.quoteOutput : '';
   const purchaseFeeRate = typeof params.purchaseFeeRate === 'string' ? Number(params.purchaseFeeRate) : 0;
   const quoteCheckedAt = typeof params.quoteCheckedAt === 'string' ? params.quoteCheckedAt : '';
@@ -68,17 +85,25 @@ export default function ReviewScreen() {
         credential: profile.passkey.credential,
         rpId: profile.passkey.rpId,
       };
-      const result = settlement
-        ? await sendSponsoredInstantSettlementSwap(account, recipient, swapOnly ? String(params.swapAmount ?? params.amount) : String(params.amount), {
+      if (autoSave && (!pocketId || !goalName || !autoSaveBreakdown)) {
+        throw new Error('The reviewed savings pocket details are missing or invalid. Return to the send form and review again.');
+      }
+      const result = autoSave
+        ? await payWithAutoSaveSponsored(account, recipient, pocketId, autoSaveBps, String(params.amount))
+        : settlement
+          ? await sendSponsoredInstantSettlementSwap(account, recipient, swapOnly ? String(params.swapAmount ?? params.amount) : String(params.amount), {
             pairAddress: typeof params.pairAddress === 'string' ? params.pairAddress : '',
             amountInRaw: typeof params.quoteInputRaw === 'string' ? params.quoteInputRaw : undefined,
             amountOutRaw: typeof params.quoteOutputRaw === 'string' ? params.quoteOutputRaw : '',
             checkedAt: typeof params.quoteCheckedAt === 'string' ? params.quoteCheckedAt : '',
             quoteMode: params.quoteMode === 'exact-output' ? 'exact-output' : 'exact-input',
           }, swapOnly)
-        : await sendSponsoredAUSDTransfer(account, recipient, String(params.amount));
+          : await sendSponsoredAUSDTransfer(account, recipient, String(params.amount));
       const settlementResult = settlement ? result as SponsoredSettlementResult : null;
-      const sentAmount = settlementResult ? Number(settlementResult.amountIn) : amount;
+      const autoSaveResult = autoSave ? result as Awaited<ReturnType<typeof payWithAutoSaveSponsored>> : null;
+      const sentAmount = autoSaveResult
+        ? Number(autoSaveResult.totalDebit)
+        : settlementResult ? Number(settlementResult.amountIn) : amount;
       const receivedAmount = settlementResult ? Number(settlementResult.amountOut) : amount;
       const receivedCurrency = settlementResult?.outputSymbol ?? 'AUSD';
       const transfer = {
@@ -88,23 +113,45 @@ export default function ReviewScreen() {
         currency: 'AUSD',
         receivedAmount,
         receivedCurrency,
-        settlementKind: settlement ? 'agora-instant-settlement' as const : 'direct' as const,
+        settlementKind: settlement
+          ? 'agora-instant-settlement' as const
+          : autoSaveResult ? 'savings-auto-save' as const : 'direct' as const,
+        ...(autoSaveResult ? {
+          savedAmount: Number(autoSaveResult.savedAmount),
+          totalDebited: Number(autoSaveResult.totalDebit),
+          paymentAmount: Number(autoSaveResult.paymentAmount),
+          savingsPocketId: pocketId,
+          savingsGoalName: goalName,
+        } : {}),
         createdAt: new Date().toISOString(),
         mode: profile.mode,
         transactionHash: result.transactionHash,
         sponsored: true,
         ...(settlementResult ? { pairAddress: settlementResult.pairAddress, quoteOutput: settlementResult.amountOut, quoteSymbol: settlementResult.outputSymbol } : {}),
       };
-      await addTransfer(transfer);
+      let historyWarning = '';
+      try {
+        await addTransfer(transfer);
+      } catch {
+        // The chain receipt is already confirmed. Never present this as a
+        // failed payment or encourage a retry that could send funds twice.
+        historyWarning = 'The transaction is confirmed, but Activity could not save its local receipt. Keep the transaction hash below and do not resubmit.';
+      }
       router.replace({
         pathname: '/success',
         params: {
           recipient: transfer.recipient,
-          amount: String(sentAmount),
+          amount: autoSaveResult?.paymentAmount ?? String(sentAmount),
           currency: 'AUSD',
           receiveAmount: String(receivedAmount),
           receiveCurrency: receivedCurrency,
           settlement: settlement ? 'agora' : 'direct',
+          autoSave: autoSaveResult ? 'true' : 'false',
+          goalName,
+          paymentAmount: autoSaveResult?.paymentAmount ?? '',
+          autoSavedAmount: autoSaveResult?.savedAmount ?? '',
+          totalDebit: autoSaveResult?.totalDebit ?? '',
+          historyWarning,
           id: transfer.id,
           transactionHash: result.transactionHash,
           accountAddress: result.accountAddress,
@@ -126,16 +173,34 @@ export default function ReviewScreen() {
     <Page contentStyle={styles.page}>
       <BackButton onPress={() => router.back()} />
       <View style={styles.heading}>
-        <Eyebrow>{settlement ? 'AGORA INSTANT SETTLEMENT' : 'FINAL CHECK'}</Eyebrow>
-        <Title>{swapOnly ? 'Review swap' : settlement ? 'Review payout' : 'Review send'}</Title>
+        <Eyebrow>{autoSave ? 'PAYMENT + AUTO-SAVE' : settlement ? 'AGORA INSTANT SETTLEMENT' : 'FINAL CHECK'}</Eyebrow>
+        <Title>{autoSave ? 'Review payment + savings' : swapOnly ? 'Review swap' : settlement ? 'Review payout' : 'Review send'}</Title>
       </View>
       <Card style={styles.summaryCard}>
         <View style={styles.summaryLine}>
-          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>YOU SEND</Text>
+          <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>{autoSave ? 'RECIPIENT PAYMENT' : 'YOU SEND'}</Text>
           <Text style={[styles.amountValue, { color: colors.foreground }]}>
             {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} <Text style={[styles.amountUnit, { color: colors.mutedForeground }]}>AUSD</Text>
           </Text>
         </View>
+        {autoSave && autoSaveBreakdown ? (
+          <>
+            <View style={[styles.rule, { backgroundColor: colors.border }]} />
+            <View style={styles.summaryLine}>
+              <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>AUTO-SAVE · {autoSaveBps / 100}% TO {goalName.toUpperCase()}</Text>
+              <Text style={[styles.outputValue, { color: colors.foreground }]}>
+                +{Number(autoSaveBreakdown.savedAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} AUSD
+              </Text>
+            </View>
+            <View style={[styles.rule, { backgroundColor: colors.border }]} />
+            <View style={styles.summaryLine}>
+              <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>TOTAL WALLET DEBIT</Text>
+              <Text style={[styles.outputValue, { color: colors.foreground }]}>
+                {Number(autoSaveBreakdown.totalDebit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} AUSD
+              </Text>
+            </View>
+          </>
+        ) : null}
         <View style={[styles.rule, { backgroundColor: colors.border }]} />
         <View style={styles.summaryLine}>
           <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>{settlement ? 'AGORA QUOTED OUTPUT' : 'RECIPIENT RECEIVES'}</Text>
@@ -154,7 +219,7 @@ export default function ReviewScreen() {
       <Card style={styles.detailsCard}>
         <View style={styles.detailRow}>
           <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>{swapOnly ? 'OUTPUT WALLET' : 'TO'}</Text>
-          <Text selectable style={[styles.recipient, { color: colors.foreground }]}>{recipientName ? `${recipientName} · ${recipient}` : recipient}</Text>
+           <Text selectable style={[styles.recipient, { color: colors.foreground }]}>{recipientName ? `${recipientName} · ${recipient}` : recipient}</Text>
         </View>
         <View style={[styles.rule, { backgroundColor: colors.border }]} />
         <View style={styles.detailRow}>
@@ -181,14 +246,14 @@ export default function ReviewScreen() {
         <View accessibilityRole="alert" style={[styles.errorPanel, { backgroundColor: colors.secondary }]}>
           <Feather name="alert-circle" size={17} color={colors.destructive} />
           <View style={styles.progressCopy}>
-            <Text style={[styles.progressTitle, { color: colors.destructive }]}>{swapOnly ? 'Swap not confirmed' : 'Transfer not confirmed'}</Text>
+            <Text style={[styles.progressTitle, { color: colors.destructive }]}>{autoSave ? 'Payment not confirmed' : swapOnly ? 'Swap not confirmed' : 'Transfer not confirmed'}</Text>
             <Text style={[styles.error, { color: colors.mutedForeground }]}>{error}</Text>
             <Text style={[styles.errorHint, { color: colors.mutedForeground }]}>If you approved a transaction, check Activity or MonadVision before trying again.</Text>
           </View>
         </View>
       ) : null}
       <PrimaryButton
-        label={busy ? 'Confirming on Monad…' : swapOnly ? 'Approve & swap' : settlement ? 'Approve & settle' : 'Approve & send'}
+        label={busy ? 'Confirming on Monad…' : autoSave ? 'Approve payment + save' : swapOnly ? 'Approve & swap' : settlement ? 'Approve & settle' : 'Approve & send'}
         icon="arrow-right"
         onPress={confirmTransfer}
         loading={busy}

@@ -85,6 +85,7 @@ export default function ActivityScreen() {
             const transfer = entry.local;
             const confirmed = Boolean(transfer.transactionHash);
             const settlement = transfer.settlementKind === 'agora-instant-settlement';
+            const autoSave = transfer.settlementKind === 'savings-auto-save';
             const receivedAmount = transfer.receivedAmount ?? transfer.amount;
             const receivedCurrency = transfer.receivedCurrency ?? (settlement ? transfer.quoteSymbol ?? 'CTK' : transfer.currency);
             const date = new Date(transfer.createdAt);
@@ -97,10 +98,10 @@ export default function ActivityScreen() {
                 <View style={styles.cardTop}>
                   <View style={styles.transferType}>
                     <View style={[styles.icon, { backgroundColor: colors.secondary }]}>
-                      <Feather name={settlement ? 'repeat' : 'arrow-up-right'} size={16} color={colors.foreground} />
+                      <Feather name={settlement ? 'repeat' : autoSave ? 'target' : 'arrow-up-right'} size={16} color={colors.foreground} />
                     </View>
                     <View style={styles.typeCopy}>
-                      <Text style={[styles.name, { color: colors.foreground }]}>{settlement ? 'Cross-border settlement' : 'AUSD transfer'}</Text>
+                      <Text style={[styles.name, { color: colors.foreground }]}>{settlement ? 'Cross-border settlement' : autoSave ? 'Payment + auto-save' : 'AUSD transfer'}</Text>
                       <Text style={[styles.meta, { color: colors.mutedForeground }]}>{dateLabel}</Text>
                     </View>
                   </View>
@@ -114,9 +115,23 @@ export default function ActivityScreen() {
 
                 <View style={[styles.amountPanel, { backgroundColor: colors.secondary }]}>
                   <View style={styles.amountLine}>
-                    <Text style={[styles.amountLabel, { color: colors.mutedForeground }]}>SENT</Text>
+                    <Text style={[styles.amountLabel, { color: colors.mutedForeground }]}>{autoSave ? 'TOTAL WALLET DEBIT' : 'SENT'}</Text>
                     <Text style={[styles.sentAmount, { color: colors.foreground }]}>−{amountText(transfer.amount)} {transfer.currency}</Text>
                   </View>
+                  {autoSave && transfer.paymentAmount !== undefined && transfer.savedAmount !== undefined ? (
+                    <>
+                      <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                      <View style={styles.amountLine}>
+                        <Text style={[styles.amountLabel, { color: colors.mutedForeground }]}>RECIPIENT PAYMENT</Text>
+                        <Text style={[styles.receivedAmount, { color: colors.foreground }]}>{amountText(transfer.paymentAmount)} {transfer.currency}</Text>
+                      </View>
+                      <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                      <View style={styles.amountLine}>
+                        <Text style={[styles.amountLabel, { color: colors.mutedForeground }]}>AUTO-SAVED{transfer.savingsGoalName ? ` · ${transfer.savingsGoalName}` : ''}</Text>
+                        <Text style={[styles.receivedAmount, { color: colors.foreground }]}>{amountText(transfer.savedAmount)} {transfer.currency}</Text>
+                      </View>
+                    </>
+                  ) : null}
                   <View style={[styles.divider, { backgroundColor: colors.border }]} />
                   <View style={styles.amountLine}>
                     <Text style={[styles.amountLabel, { color: colors.mutedForeground }]}>{settlement ? 'TESTNET OUTPUT' : 'RECIPIENT RECEIVES'}</Text>
