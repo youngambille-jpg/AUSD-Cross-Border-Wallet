@@ -68,11 +68,8 @@ const balanceAbi = [
 export function getPasskeyErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return 'Passkey authentication did not complete. Please try again.';
   const shaped = error as Error & { code?: string; cause?: unknown };
-  const cause = shaped.cause as { error?: unknown; message?: unknown; code?: unknown } | undefined;
-  const causeText = [cause?.error, cause?.message, cause?.code]
-    .filter((part): part is string => typeof part === 'string')
-    .join(' ')
-    .toLowerCase();
+  const nativeDetails = getNativePasskeyErrorDetails(shaped.cause);
+  const causeText = nativeDetails.toLowerCase();
 
   if (shaped.code === 'PRF_UNAVAILABLE') {
     return 'The passkey was created, but this authenticator did not provide Mera’s secure account key. Try a device passkey provider that supports WebAuthn PRF, such as Google Password Manager or iCloud Keychain.';
@@ -81,13 +78,50 @@ export function getPasskeyErrorMessage(error: unknown) {
     return 'Secure cryptography is unavailable in this app runtime. Update the app and try again.';
   }
   if (shaped.code === 'PASSKEY_OPERATION_FAILED') {
-    const rpId = getRelyingPartyId();
-    return `The passkey ceremony could not finish for RP domain ${rpId ?? 'the configured domain'}. Check that the app’s RP domain has the matching Android assetlinks.json or iOS apple-app-site-association file, then retry.`;
+    return nativeDetails
+      ? `The passkey ceremony failed. Native error: ${nativeDetails}`
+      : 'The passkey ceremony failed, but the native platform did not provide additional error details.';
   }
   if (causeText.includes('cancel')) {
     return 'Passkey prompt cancelled. You can try again when you’re ready.';
   }
   return error.message || 'Passkey authentication did not complete. Please try again.';
+}
+
+function getNativePasskeyErrorDetails(error: unknown): string {
+  const details: string[] = [];
+  let current = error;
+
+  for (let depth = 0; depth < 4 && current; depth += 1) {
+    if (current instanceof Error) {
+      const shaped = current as Error & { code?: unknown; error?: unknown; cause?: unknown };
+      const code = typeof shaped.code === 'string' ? shaped.code : undefined;
+      const message = shaped.message.trim();
+      const detail = [code, message && message !== code ? message : undefined]
+        .filter((part): part is string => Boolean(part))
+        .join(': ');
+      if (detail && !details.includes(detail)) details.push(detail);
+      current = shaped.cause;
+      continue;
+    }
+
+    if (typeof current === 'object') {
+      const shaped = current as { code?: unknown; error?: unknown; message?: unknown; cause?: unknown };
+      const code = [shaped.code, shaped.error].find((part): part is string => typeof part === 'string');
+      const message = typeof shaped.message === 'string' ? shaped.message.trim() : undefined;
+      const detail = [code, message && message !== code ? message : undefined]
+        .filter((part): part is string => Boolean(part))
+        .join(': ');
+      if (detail && !details.includes(detail)) details.push(detail);
+      current = shaped.cause;
+      continue;
+    }
+
+    if (typeof current === 'string' && current.trim()) details.push(current.trim());
+    break;
+  }
+
+  return details.join(' → ');
 }
 
 async function assertNativeRpAssociation(rpId: string) {
