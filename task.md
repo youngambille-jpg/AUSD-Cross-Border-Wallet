@@ -8,7 +8,7 @@
 
 ## Product Roadmap
 
-1. [ ] Make AUSD and USDC balances, receive, and transfer token-aware on Monad; add USDT only after verifying a supported deployment for the active network.
+1. [ v] Make AUSD and USDC balances, receive, and transfer token-aware on Monad; add USDT only after verifying a supported deployment for the active network.
    - [x] Display AUSD and USDC balances on Monad.
    - [ ] Make receive and transfer flows token-selectable for AUSD and USDC.
    - [ ] Add USDT only after verifying a supported deployment for the active network.
