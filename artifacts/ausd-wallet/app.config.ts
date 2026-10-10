@@ -10,7 +10,7 @@ function domainHost(value?: string) {
 }
 
 export default ({ config }: ConfigContext) => {
-  const rpId = domainHost(process.env.EXPO_PUBLIC_RP_ID || process.env.EXPO_PUBLIC_DOMAIN);
+  const rpId = domainHost(process.env.EXPO_PUBLIC_RP_ID || process.env.EXPO_PUBLIC_DOMAIN || "auth.vic-ezealor.workers.dev");
   const bundleIdentifier = process.env.AUSD_IOS_BUNDLE_ID || 'com.ausd.wallet';
   const androidPackage = process.env.AUSD_ANDROID_PACKAGE || 'com.ausd.wallet';
 
@@ -18,7 +18,7 @@ export default ({ config }: ConfigContext) => {
     ...config,
     name: config.name ?? 'AUSD Wallet',
     slug: config.slug ?? 'ausd-wallet',
-    version: config.version ?? '1.0.0',
+    version: config.version ?? '0.1.0',
     ios: {
       ...config.ios,
       bundleIdentifier,
