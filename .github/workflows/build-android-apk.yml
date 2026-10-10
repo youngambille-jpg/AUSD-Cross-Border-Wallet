@@ -71,6 +71,17 @@ jobs:
             exit 1
           fi
 
+          rp_host="$(node -e "console.log(new URL(process.env.EXPO_PUBLIC_RP_ID.includes('://') ? process.env.EXPO_PUBLIC_RP_ID : 'https://' + process.env.EXPO_PUBLIC_RP_ID).hostname)")"
+          if [[ "$rp_host" != "auth.vic-ezealor.workers.dev" ]]; then
+            echo "::error::EXPO_PUBLIC_RP_ID must be auth.vic-ezealor.workers.dev for the published Android association file; received $rp_host"
+            exit 1
+          fi
+          assetlinks="$(curl --fail --silent --show-error --location --max-redirs 0 "https://$rp_host/.well-known/assetlinks.json")"
+          if ! printf '%s' "$assetlinks" | node -e "let s=''; process.stdin.on('data', c => s += c).on('end', () => { const entries = JSON.parse(s); const ok = entries.some(e => e.target?.namespace === 'android_app' && e.target?.package_name === (process.env.AUSD_ANDROID_PACKAGE || 'com.ausd.wallet') && e.relation?.includes('delegate_permission/common.get_login_creds') && e.target.sha256_cert_fingerprints?.length); if (!ok) process.exit(1); })"; then
+            echo '::error::The RP domain assetlinks.json does not contain the Android package, get_login_creds relation, and certificate fingerprint.'
+            exit 1
+          fi
+
           if [[ -z "$EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL" ]]; then
             echo '::notice::EXPO_PUBLIC_ALCHEMY_MONAD_RPC_URL is unset; the app will use Monad public testnet RPC.'
           fi

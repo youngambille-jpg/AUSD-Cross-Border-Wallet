@@ -81,7 +81,8 @@ export function getPasskeyErrorMessage(error: unknown) {
     return 'Secure cryptography is unavailable in this app runtime. Update the app and try again.';
   }
   if (shaped.code === 'PASSKEY_OPERATION_FAILED') {
-    return 'The passkey ceremony could not finish. Check that the app’s RP domain has the matching Android assetlinks.json or iOS apple-app-site-association file, then retry.';
+    const rpId = getRelyingPartyId();
+    return `The passkey ceremony could not finish for RP domain ${rpId ?? 'the configured domain'}. Check that the app’s RP domain has the matching Android assetlinks.json or iOS apple-app-site-association file, then retry.`;
   }
   if (causeText.includes('cancel')) {
     return 'Passkey prompt cancelled. You can try again when you’re ready.';
@@ -117,8 +118,17 @@ async function assertNativeRpAssociation(rpId: string) {
     const entries = Array.isArray(association) ? association : [];
     const appIsAssociated = entries.some((entry) => {
       if (!entry || typeof entry !== 'object') return false;
-      const target = (entry as { target?: { namespace?: string; package_name?: string } }).target;
-      return target?.namespace === 'android_app' && target.package_name === packageName;
+      const typedEntry = entry as {
+        relation?: unknown;
+        target?: { namespace?: string; package_name?: string; sha256_cert_fingerprints?: unknown };
+      };
+      const relations = Array.isArray(typedEntry.relation) ? typedEntry.relation : [];
+      const target = typedEntry.target;
+      return relations.includes('delegate_permission/common.get_login_creds')
+        && target?.namespace === 'android_app'
+        && target.package_name === packageName
+        && Array.isArray(target.sha256_cert_fingerprints)
+        && target.sha256_cert_fingerprints.length > 0;
     });
     if (!appIsAssociated) {
       throw new Error(`Android passkeys are not associated with ${packageName}. Add the installed APK’s signing-certificate SHA-256 fingerprint to the RP domain’s assetlinks.json, then rebuild and retry.`);

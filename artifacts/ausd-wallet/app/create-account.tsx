@@ -49,6 +49,7 @@ export default function CreateAccountScreen() {
       router.replace('/(tabs)');
     } catch (caught) {
       setError(getPasskeyErrorMessage(caught));
+      
     } finally {
       setBusy(false);
     }
